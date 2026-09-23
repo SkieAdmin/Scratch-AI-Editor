@@ -1,0 +1,226 @@
+@import "../../css/units.css";
+@import "../../css/colors.css";
+
+.bubble {
+    display: flex;
+    flex-direction: column;
+    gap: calc($space / 2);
+    max-width: 100%;
+    padding: calc($space * 0.75) $space;
+    border-radius: calc($space * 1.5);
+    font-size: 0.8125rem;
+    line-height: 1.45;
+    color: $text-primary;
+    background: $ui-white;
+    border: 1px solid $ui-black-transparent-10;
+}
+
+.bubble.user {
+    align-self: flex-end;
+    background: $motion-primary;
+    border-color: $motion-tertiary;
+    color: $ui-white;
+    border-end-end-radius: calc($space / 2);
+}
+
+.bubble.assistant {
+    align-self: flex-start;
+    border-end-start-radius: calc($space / 2);
+}
+
+.bubble.system {
+    align-self: center;
+    background: $ui-secondary;
+    border-style: dashed;
+    font-size: 0.75rem;
+}
+
+.bubble.has-error {
+    border-color: $error-primary;
+}
+
+.role {
+    font-size: 0.625rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    opacity: 0.65;
+}
+
+.content {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.paragraph {
+    margin: 0;
+    white-space: pre-wrap;
+}
+
+.paragraph + .paragraph {
+    margin-block-start: calc($space / 2);
+}
+
+.inline-code {
+    padding: 0 0.2em;
+    border-radius: $form-radius;
+    background: $ui-black-transparent-10;
+    font-family: monospace;
+    font-size: 0.9em;
+}
+
+.code-block {
+    margin: calc($space / 2) 0 0;
+    padding: calc($space * 0.75);
+    border-radius: $form-radius;
+    background: $ui-secondary;
+    color: $text-primary;
+    font-family: monospace;
+    font-size: 0.75rem;
+    overflow-x: auto;
+    white-space: pre;
+}
+
+.bubble.user .code-block,
+.bubble.user .inline-code {
+    background: $ui-white-transparent;
+    color: $ui-white;
+}
+
+/* Reasoning */
+
+.reasoning {
+    display: flex;
+    flex-direction: column;
+    gap: calc($space / 2);
+}
+
+.reasoning-toggle {
+    display: flex;
+    align-items: center;
+    gap: calc($space / 2);
+    align-self: flex-start;
+    padding: 0;
+    border: none;
+    background: none;
+    color: $looks-secondary;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.6875rem;
+    font-weight: bold;
+}
+
+.caret {
+    width: 0;
+    height: 0;
+    border-block: 0.25rem solid transparent;
+    border-inline-start: 0.35rem solid currentColor;
+    border-inline-end: 0;
+    transition: transform 0.15s ease;
+}
+
+[dir="rtl"] .caret {
+    transform: scaleX(-1);
+}
+
+.caret.caret-open {
+    transform: rotate(90deg);
+}
+
+[dir="rtl"] .caret.caret-open {
+    transform: scaleX(-1) rotate(-90deg);
+}
+
+.reasoning-body {
+    padding: calc($space / 2) calc($space * 0.75);
+    border-inline-start: 2px solid $looks-light-transparent;
+    background: $looks-light-transparent;
+    border-radius: $form-radius;
+    color: $text-primary;
+    font-size: 0.75rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+/* Tool calls */
+
+.tool-calls {
+    display: flex;
+    flex-direction: column;
+    gap: calc($space / 4);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+/* Attachments */
+
+.attachments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: calc($space / 2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.attachment {
+    display: flex;
+    align-items: center;
+    gap: calc($space / 2);
+    max-width: 100%;
+    padding: calc($space / 4) calc($space / 2);
+    border-radius: $form-radius;
+    background: $ui-black-transparent-10;
+    font-size: 0.6875rem;
+}
+
+.attachment-thumb {
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: calc($form-radius / 2);
+    object-fit: cover;
+}
+
+.attachment-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Streaming */
+
+.typing-caret {
+    display: inline-block;
+    width: 0.45rem;
+    height: 0.9em;
+    margin-inline-start: 0.15em;
+    vertical-align: text-bottom;
+    background: currentColor;
+    border-radius: 1px;
+    animation: message-bubble-blink 1s steps(2, start) infinite;
+}
+
+.error {
+    padding: calc($space / 2) calc($space * 0.75);
+    border-radius: $form-radius;
+    background: $ui-alert-orange;
+    color: $error-primary;
+    font-size: 0.75rem;
+}
+
+@keyframes message-bubble-blink {
+    to {
+        visibility: hidden;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .typing-caret {
+        animation: none;
+    }
+
+    .caret {
+        transition: none;
+    }
+}

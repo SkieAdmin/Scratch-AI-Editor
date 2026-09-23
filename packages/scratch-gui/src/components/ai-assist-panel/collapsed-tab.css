@@ -1,0 +1,58 @@
+@import "../../css/units.css";
+@import "../../css/colors.css";
+
+.tab {
+    position: absolute;
+    inset-inline-end: 0;
+    top: 50%;
+    transform: translateY(-50%);
+
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: calc($space / 2);
+    padding: $space calc($space / 2);
+
+    border: none;
+    border-start-start-radius: $space;
+    border-end-start-radius: $space;
+    background: $motion-primary;
+    box-shadow: 0 0 0.5rem $ui-black-transparent;
+    color: $ui-white;
+    cursor: pointer;
+    pointer-events: auto;
+}
+
+.tab:hover {
+    background: $motion-tertiary;
+}
+
+.tab:focus-visible {
+    outline: 0.25rem solid $looks-transparent;
+    outline-offset: 0;
+}
+
+/*
+    While the panel is open the tab stays in the DOM so that closing can return
+    focus to it; the panel covers it, so it only needs to sit underneath.
+*/
+.tab.behind-panel {
+    z-index: 0;
+}
+
+.icon {
+    width: 1.125rem;
+    height: 1.125rem;
+}
+
+.label {
+    writing-mode: vertical-rl;
+    font-size: 0.6875rem;
+    font-weight: bold;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+}
+
+[dir="rtl"] .label {
+    writing-mode: vertical-lr;
+}

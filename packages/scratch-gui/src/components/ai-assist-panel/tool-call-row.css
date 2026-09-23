@@ -1,0 +1,73 @@
+@import "../../css/units.css";
+@import "../../css/colors.css";
+
+.row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: calc($space / 1.5);
+    padding: calc($space / 2) calc($space * 0.75);
+    border-radius: $form-radius;
+    background: $ui-primary;
+    font-size: 0.6875rem;
+    line-height: 1.2;
+}
+
+.dot {
+    flex: none;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: $text-primary-transparent;
+}
+
+.dot.running {
+    background: $motion-primary;
+    animation: tool-call-pulse 1s ease-in-out infinite;
+}
+
+.dot.done {
+    background: $ui-green-2;
+}
+
+.dot.error {
+    background: $red-primary;
+}
+
+.name {
+    font-family: monospace;
+    color: $text-primary;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.duration {
+    margin-inline-start: auto;
+    flex: none;
+    font-variant-numeric: tabular-nums;
+    color: $text-primary-transparent;
+}
+
+.error-text {
+    flex-basis: 100%;
+    color: $red-tertiary;
+    word-break: break-word;
+}
+
+@keyframes tool-call-pulse {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.4;
+        transform: scale(0.7);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dot.running {
+        animation: none;
+    }
+}

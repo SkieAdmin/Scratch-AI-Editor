@@ -1,0 +1,50 @@
+appId: io.github.skieadmin.scratch-ai-editor
+productName: Skie AI Editor
+copyright: AGPL-3.0-only. A modified version of the Scratch editor, not affiliated with the Scratch Foundation.
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - dist/**
+  - renderer/**
+  - package.json
+  - LICENSE
+  - TRADEMARK
+
+# The bridge is a workspace package, so it is symlinked rather than copied into
+# this package's node_modules; asar unpacking follows the link and embeds it.
+asar: true
+
+win:
+  # The app is unsigned, so Windows SmartScreen will warn on first run. Signing
+  # needs a certificate this build does not have; set CSC_LINK and CSC_KEY_PASSWORD
+  # to sign a release.
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+    - target: zip
+      arch: [x64]
+  artifactName: SkieAIEditor-${version}-${arch}.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  shortcutName: Skie AI Editor
+
+portable:
+  artifactName: SkieAIEditor-${version}-portable.${ext}
+
+linux:
+  target:
+    - AppImage
+  category: Development
+
+mac:
+  target:
+    - dmg
+  category: public.app-category.developer-tools

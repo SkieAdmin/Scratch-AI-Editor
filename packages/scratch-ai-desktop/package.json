@@ -1,0 +1,43 @@
+{
+  "name": "@skieadmin/scratch-ai-desktop",
+  "version": "15.1.1",
+  "private": true,
+  "description": "Desktop shell for the AI-assisted Scratch editor. Hosts the MCP bridge in its main process so the assistant is built in.",
+  "keywords": [
+    "ai",
+    "desktop",
+    "electron",
+    "mcp",
+    "scratch"
+  ],
+  "license": "AGPL-3.0-only",
+  "author": "SkieAdmin (https://github.com/SkieAdmin)",
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "npm run clean && npm run build:editor && npm run compile && npm run stage",
+    "build:editor": "npm run build:app --workspace @scratch/scratch-gui",
+    "clean": "rimraf dist renderer release",
+    "compile": "tsc --project tsconfig.build.json",
+    "dist": "npm run build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --publish never",
+    "format": "prettier --write . && eslint --fix",
+    "lint": "eslint && prettier --check .",
+    "stage": "node scripts/stage-renderer.mjs",
+    "start": "npm run build && electron .",
+    "test": "npm run lint"
+  },
+  "dependencies": {
+    "@skieadmin/scratch-ai-bridge": "15.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.3",
+    "cross-env": "7.0.3",
+    "electron": "33.4.11",
+    "electron-builder": "25.1.8",
+    "eslint": "9.39.5",
+    "eslint-config-scratch": "14.1.72",
+    "prettier": "3.9.8",
+    "rimraf": "6.1.2",
+    "typescript": "5.9.3"
+  }
+}

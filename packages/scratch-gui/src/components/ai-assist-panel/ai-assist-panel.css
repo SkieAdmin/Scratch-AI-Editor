@@ -1,0 +1,201 @@
+@import "../../css/units.css";
+@import "../../css/colors.css";
+@import "../../css/z-index.css";
+
+/*
+    The root spans the editor area below the menu bar so that the tab and the
+    panel can be anchored to its edge wherever the panel is mounted in the tree.
+    It never swallows clicks; only its children do.
+*/
+/*
+    The panel reserves its own column in the editor's flex row, so the stage and
+    blocks shrink instead of being covered. This element carries no width of its
+    own: the wrapper in gui.css is what widens, and the panel fills it absolutely
+    so it can slide in and out.
+*/
+.root {
+    position: relative;
+    height: 100%;
+    pointer-events: none;
+}
+
+.panel {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-end: 0;
+    z-index: 1;
+
+    display: flex;
+    flex-direction: column;
+    max-width: 100vw;
+
+    background: $ui-secondary;
+    border-inline-start: 1px solid $ui-black-transparent;
+    box-shadow: 0 0 1rem $ui-black-transparent;
+    color: $text-primary;
+    pointer-events: auto;
+    transform: translateX(0);
+    transition: transform 0.25s ease, width 0.25s ease;
+}
+
+.panel-hidden {
+    transform: translateX(100%);
+    visibility: hidden;
+    transition: transform 0.25s ease, width 0.25s ease, visibility 0s linear 0.25s;
+}
+
+[dir="rtl"] .panel-hidden {
+    transform: translateX(-100%);
+}
+
+/* Resize handle */
+
+.resize-handle {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: calc($space / -4);
+    width: calc($space / 2);
+    cursor: col-resize;
+    touch-action: none;
+}
+
+.resize-handle:hover,
+.resize-handle:focus-visible {
+    background: $motion-primary;
+    outline: none;
+}
+
+/* Header */
+
+.header {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: calc($space / 2);
+    padding: calc($space * 0.75) $space calc($space / 4);
+}
+
+.status-dot {
+    flex: none;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: $text-primary-transparent;
+}
+
+.dot-connected {
+    background: $ui-green-2;
+}
+
+.dot-connecting {
+    background: $control-primary;
+}
+
+.dot-disabled {
+    background: $text-primary-transparent;
+}
+
+.dot-disconnected {
+    background: $ui-tertiary;
+    border: 1px solid $text-primary-transparent;
+}
+
+.dot-error {
+    background: $red-primary;
+}
+
+/* The icon artwork is white, so it sits on a coloured disc rather than on the panel. */
+.title-icon {
+    box-sizing: border-box;
+    flex: none;
+    width: 1.25rem;
+    height: 1.25rem;
+    padding: 0.125rem;
+    border-radius: 50%;
+    background: $motion-primary;
+}
+
+.title {
+    flex: 1 1 auto;
+    margin: 0;
+    font-size: 0.875rem;
+    font-weight: bold;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.header-button {
+    flex: none;
+    padding: calc($space / 4) calc($space / 2);
+    border: 1px solid $ui-black-transparent-10;
+    border-radius: $form-radius;
+    background: $ui-white;
+    color: $text-primary;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.6875rem;
+    white-space: nowrap;
+}
+
+.header-button:hover {
+    background: $ui-primary;
+}
+
+.close-button {
+    flex: none;
+    width: 1.5rem;
+    height: 1.5rem;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: none;
+    color: $text-primary;
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+}
+
+.close-button:hover {
+    background: $ui-black-transparent-10;
+}
+
+/* Provider line */
+
+.provider-line {
+    display: flex;
+    flex: none;
+    flex-wrap: wrap;
+    gap: 0 calc($space / 2);
+    margin: 0;
+    padding: 0 $space calc($space / 2);
+    color: $text-primary-transparent;
+    font-size: 0.6875rem;
+}
+
+.model-label {
+    font-family: monospace;
+}
+
+.separator {
+    opacity: 0.6;
+}
+
+/* Panel-level error */
+
+.error {
+    flex: none;
+    margin: 0 $space calc($space / 2);
+    padding: calc($space / 2) calc($space * 0.75);
+    border-radius: $form-radius;
+    background: $ui-alert-orange;
+    color: $error-primary;
+    font-size: 0.75rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .panel,
+    .panel-hidden {
+        transition: none;
+    }
+}

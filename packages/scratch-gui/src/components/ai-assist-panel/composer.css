@@ -1,0 +1,151 @@
+@import "../../css/units.css";
+@import "../../css/colors.css";
+
+.composer {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    gap: calc($space / 2);
+    padding: $space;
+    border-block-start: 1px solid $ui-black-transparent-10;
+    background: $ui-white;
+}
+
+.row {
+    display: flex;
+    align-items: flex-end;
+    gap: calc($space / 2);
+}
+
+.file-input {
+    display: none;
+}
+
+.textarea {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-height: 10rem;
+    padding: calc($space * 0.75) $space;
+    border: 1px solid $ui-black-transparent;
+    border-radius: calc($space * 1.5);
+    background: $ui-white;
+    color: $text-primary;
+    font-family: inherit;
+    font-size: 0.8125rem;
+    line-height: 1.4;
+    resize: none;
+    overflow-y: auto;
+}
+
+.textarea::placeholder {
+    color: $text-primary-transparent;
+}
+
+.textarea:focus {
+    outline: none;
+    border-color: $motion-primary;
+    box-shadow: 0 0 0 0.2rem $looks-light-transparent;
+}
+
+.icon-button,
+.send-button,
+.abort-button {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+.icon-button {
+    background: $ui-primary;
+}
+
+.icon-button:hover {
+    background: $ui-tertiary;
+}
+
+.send-button {
+    background: $motion-primary;
+}
+
+.send-button:hover:not(:disabled) {
+    background: $motion-tertiary;
+}
+
+.send-button:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.abort-button {
+    background: $red-primary;
+}
+
+.abort-button:hover {
+    background: $red-tertiary;
+}
+
+.abort-glyph {
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 0.125rem;
+    background: $ui-white;
+}
+
+.icon {
+    width: 1.125rem;
+    height: 1.125rem;
+}
+
+[dir="rtl"] .send-button .icon {
+    transform: scaleX(-1);
+}
+
+/* Pending attachments */
+
+.attachments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: calc($space / 2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.attachment {
+    display: flex;
+    align-items: center;
+    gap: calc($space / 2);
+    max-width: 100%;
+    padding: calc($space / 4) calc($space / 2);
+    border-radius: $form-radius;
+    background: $ui-primary;
+    color: $text-primary;
+    font-size: 0.6875rem;
+}
+
+.attachment-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.attachment-remove {
+    padding: 0;
+    border: none;
+    background: none;
+    color: $text-primary;
+    cursor: pointer;
+    font-size: 0.875rem;
+    line-height: 1;
+}
+
+.attachment-remove:hover {
+    color: $red-tertiary;
+}
