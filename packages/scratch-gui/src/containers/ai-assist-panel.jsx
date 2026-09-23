@@ -6,7 +6,7 @@ import {connect} from 'react-redux';
 import VM from '@scratch/scratch-vm';
 
 import AiAssistPanelComponent from '../components/ai-assist-panel/ai-assist-panel.jsx';
-import BridgeClient from '../lib/ai/bridge-client';
+import BridgeClient, {setActiveBridge} from '../lib/ai/bridge-client';
 import intlShape from '../lib/intlShape.js';
 import {createId, runChatTurn} from '../lib/ai/chat-session';
 import {buildSystemPrompt} from '../lib/ai/system-prompt';
@@ -65,6 +65,7 @@ class AiAssistPanel extends React.Component {
         this.toolDefinitions = TOOL_DEFINITIONS;
         this.bridge = null;
         this.abortController = null;
+        this.startedMessages = new Set();
     }
 
     componentDidMount () {
@@ -93,12 +94,15 @@ class AiAssistPanel extends React.Component {
         });
         this.bridge.setToolDefinitions(this.toolDefinitions);
         this.bridge.connect();
+        // The settings modal lists models over the same connection.
+        setActiveBridge(this.bridge);
     }
 
     closeBridge () {
         if (!this.bridge) return;
         this.bridge.disconnect();
         this.bridge = null;
+        setActiveBridge(null);
     }
 
     handleBridgeStatusChange (status, detail) {
@@ -177,8 +181,17 @@ class AiAssistPanel extends React.Component {
             }
             return {
                 chat: request => this.bridge.chat(
-                    {providerId, model: request.model, messages: request.messages, tools: request.tools},
-                    request.onContentDelta
+                    {
+                        provider: providerId,
+                        model: request.model,
+                        messages: request.messages,
+                        tools: request.tools
+                    },
+                    {
+                        onContentDelta: request.onContentDelta,
+                        onReasoningDelta: request.onReasoningDelta,
+                        signal: request.signal
+                    }
                 )
             };
         }
@@ -217,6 +230,7 @@ class AiAssistPanel extends React.Component {
 
         const history = this.props.messages.concat([userMessage]);
         this.abortController = new AbortController();
+        this.startedMessages = new Set();
 
         try {
             const transport = this.resolveTransport();
@@ -232,17 +246,7 @@ class AiAssistPanel extends React.Component {
                 toolDefinitions: this.toolDefinitions,
                 runTool: this.toolRunner.runTool,
                 signal: this.abortController.signal,
-                onMessageStart: id => {
-                    this.props.onAddMessage({
-                        id,
-                        role: 'assistant',
-                        content: '',
-                        reasoning: '',
-                        toolCalls: [],
-                        createdAt: Date.now()
-                    });
-                    this.props.onStartStream(id);
-                },
+                onMessageStart: id => this.props.onStartStream(id),
                 onContentDelta: (id, delta) => this.appendTo(id, 'content', delta),
                 onReasoningDelta: (id, delta) => this.appendTo(id, 'reasoning', delta),
                 onToolCallStart: (id, call) => this.patchToolCall(id, {...call, status: 'running'}),
@@ -257,13 +261,46 @@ class AiAssistPanel extends React.Component {
         }
     }
 
+    /**
+     * Add the assistant bubble for a turn, the first time that turn has anything
+     * to show.
+     *
+     * Creating it when the turn starts would leave an empty bubble behind
+     * whenever the request fails before the model says a word, which is exactly
+     * what a misconfigured provider or an offline bridge does. Waiting also
+     * costs nothing: the composer already shows the turn is running, and the
+     * first fragment is carried into the message this creates.
+     * @param {string} id the message id for this turn
+     * @param {object} initial the first content, reasoning or tool call to show
+     * @returns {boolean} true when this call created the message
+     */
+    ensureMessage (id, initial) {
+        if (this.startedMessages.has(id)) return false;
+
+        this.startedMessages.add(id);
+        this.props.onAddMessage({
+            id,
+            role: 'assistant',
+            content: '',
+            reasoning: '',
+            toolCalls: [],
+            createdAt: Date.now(),
+            ...initial
+        });
+        return true;
+    }
+
     appendTo (id, field, delta) {
+        if (this.ensureMessage(id, {[field]: delta})) return;
+
         const message = this.props.messages.find(candidate => candidate.id === id);
         if (!message) return;
         this.props.onUpdateMessage(id, {[field]: (message[field] || '') + delta});
     }
 
     patchToolCall (id, call) {
+        if (this.ensureMessage(id, {toolCalls: [call]})) return;
+
         const message = this.props.messages.find(candidate => candidate.id === id);
         if (!message) return;
 

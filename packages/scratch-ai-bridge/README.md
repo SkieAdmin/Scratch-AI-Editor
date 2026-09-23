@@ -114,8 +114,8 @@ client at `http://127.0.0.1:8610/mcp`.
 ## Pointing the editor at it
 
 The editor is the WebSocket _client_. It connects to `ws://<host>:<port>/editor?token=<token>`, announces its tool
-catalogue in a `hello`, and from then on answers `invoke` envelopes and sends `chat` requests. It reconnects on its
-own with exponential backoff, so the bridge and the editor can be started in either order.
+catalogue in a `hello`, and from then on answers `invoke` envelopes and sends its own `chat` and `models` requests.
+It reconnects on its own with exponential backoff, so the bridge and the editor can be started in either order.
 
 Only one editor may be attached at a time. A second connection is closed immediately with code `4001`, because a
 tool call names no editor and two attached editors would make "run this in Scratch" ambiguous.
@@ -148,11 +148,26 @@ JSON envelopes in both directions over the editor WebSocket.
 | `result`        | editor → bridge | `{id, ok, result?, error?, durationMs}`                             |
 | `event`         | editor → bridge | `{event, payload}`                                                  |
 | `chat`          | editor → bridge | `{id, provider, model, messages, tools?, temperature?, maxTokens?}` |
-| `chat-delta`    | bridge → editor | `{id, delta}` where delta is `{content?, reasoning?, toolCalls?}`   |
+| `chat-cancel`   | editor → bridge | `{id}`                                                              |
+| `chat-delta`    | bridge → editor | `{id, delta}`                                                       |
 | `chat-done`     | bridge → editor | `{id, ok, result?, error?}`                                         |
 | `models`        | editor → bridge | `{id, provider}`                                                    |
 | `models-done`   | bridge → editor | `{id, ok, models?, error?}`                                         |
 | `ping` / `pong` | both            | heartbeat; the socket is dropped after two unanswered pings         |
+
+`provider` is one of `deepseek`, `openrouter`, `lmstudio`, `ollama`. `messages` and `tools` are in OpenAI
+chat-completions form.
+
+A `chat-delta` carries `delta` as an object, `{content?, reasoning?, toolCalls?}`: `content` is answer text,
+`reasoning` is the model's chain of thought, kept apart so the editor can style it differently, and `toolCalls` are
+fragments of a call still being assembled.
+
+A successful `chat-done` carries `result` as `{content, reasoning, toolCalls, finishReason}`, where each tool call
+is `{id, name, args, rawArguments}`. `args` is the parsed arguments and `rawArguments` is the JSON text the model
+produced; the editor echoes that text back verbatim in the assistant message of its next `chat`.
+
+`chat-cancel` abandons an in-flight `chat`: the bridge aborts the provider request and sends nothing further for
+that id. Cancelling an id that has already finished does nothing.
 
 Tool invocations time out after 30 seconds and reject with a message naming the tool.
 

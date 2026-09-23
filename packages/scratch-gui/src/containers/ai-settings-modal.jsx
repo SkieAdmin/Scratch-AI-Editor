@@ -4,8 +4,10 @@ import React from 'react';
 import {connect} from 'react-redux';
 
 import AiSettingsModalComponent from '../components/ai-settings-modal/ai-settings-modal.jsx';
+import {getActiveBridge} from '../lib/ai/bridge-client';
 import {getProvider} from '../lib/ai/providers';
-import {DEEPSEEK_MODELS, PROVIDER_IDS} from '../lib/ai/constants';
+import {looksLikeReasoningModel} from '../lib/ai/providers/base-provider';
+import {BRIDGE_STATUS, DEEPSEEK_MODELS, PROVIDER_IDS} from '../lib/ai/constants';
 import {saveConfig} from '../lib/ai/persistence';
 import {setAiConfig, setAiError, setAiModels} from '../reducers/ai-assist';
 import {closeAiSettingsModal} from '../reducers/modals';
@@ -51,15 +53,36 @@ class AiSettingsModal extends React.Component {
 
         this.props.onSetModels([], true);
         try {
-            const models = await provider.listModels({
-                apiKey: (this.props.config.apiKeys || {})[providerId],
-                baseUrl: this.props.config.baseUrls[providerId]
-            });
-            this.props.onSetModels(models, false);
+            this.props.onSetModels(await this.fetchModels(provider, providerId), false);
         } catch (e) {
             this.props.onSetModels([], false);
             this.props.onSetError(e.message);
         }
+    }
+
+    /**
+     * List a provider's models wherever its credentials are.
+     *
+     * With the bridge in use the API key lives there and never reaches the
+     * browser, so asking the provider from this page would fail for want of a
+     * key even though the bridge could answer.
+     * @param {object} provider the provider to list
+     * @param {string} providerId the provider's identifier
+     * @returns {Promise<Array<object>>} the models it offers
+     */
+    async fetchModels (provider, providerId) {
+        const bridge = getActiveBridge();
+        if (this.props.config.useBridge && this.props.bridgeStatus === BRIDGE_STATUS.CONNECTED && bridge) {
+            const models = await bridge.listModels(providerId);
+            // The bridge reports ids and labels; whether a model reasons is the
+            // editor's own judgement, as it is for a browser-side listing.
+            return models.map(model => ({...model, reasoning: looksLikeReasoningModel(model.id)}));
+        }
+
+        return provider.listModels({
+            apiKey: (this.props.config.apiKeys || {})[providerId],
+            baseUrl: this.props.config.baseUrls[providerId]
+        });
     }
 
     async handleTestConnection () {

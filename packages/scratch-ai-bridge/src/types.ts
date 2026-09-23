@@ -52,6 +52,12 @@ export interface ParsedToolCall {
   id: string
   name: string
   args: unknown
+  /**
+   * The argument text exactly as the model assembled it. The next request has to
+   * echo the assistant's tool calls back verbatim, and re-serialising `args`
+   * would not reproduce arguments that were never valid JSON.
+   */
+  rawArguments: string
 }
 
 /** One fragment of a tool call as it arrives mid-stream. */

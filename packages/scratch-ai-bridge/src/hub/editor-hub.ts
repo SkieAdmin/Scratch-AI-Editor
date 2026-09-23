@@ -30,6 +30,8 @@ export interface EditorSocket {
 
 /** A chat completion the editor asked the bridge to run on its behalf. */
 export interface ChatRequestEnvelope {
+  /** Names this request in every envelope that answers or cancels it. */
+  id: string
   provider: string
   model: string
   messages: ChatMessage[]
@@ -61,6 +63,8 @@ export interface EditorHubOptions {
   onToolsChanged?: (tools: readonly ToolDefinition[]) => void
   onEditorEvent?: (event: string, payload: unknown) => void
   onChatRequest?: (request: ChatRequestEnvelope, responder: ChatResponder) => void
+  /** The editor abandoned the chat with this id; stop the provider request. */
+  onChatCancel?: (id: string) => void
   onModelsRequest?: (provider: string, responder: ModelsResponder) => void
 }
 
@@ -164,6 +168,9 @@ export class EditorHub {
         break
       case 'chat':
         this.handleChat(envelope)
+        break
+      case 'chat-cancel':
+        this.options.onChatCancel?.(String(envelope.id))
         break
       case 'models':
         this.handleModels(envelope)
