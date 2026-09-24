@@ -48,19 +48,18 @@ const BRIDGE_STATUS = {
     ERROR: 'error'
 };
 
-/** Width bounds for the resizable panel, in pixels. */
-const PANEL_MIN_WIDTH = 280;
-const PANEL_MAX_WIDTH = 720;
-const PANEL_DEFAULT_WIDTH = 380;
+/**
+ * How wide the assistant panel is, in pixels. Keep in sync with
+ * `$ai-assist-panel-width` in css/units.css.
+ */
+const PANEL_WIDTH = 380;
 
 export {
     BRIDGE_STATUS,
     DEEPSEEK_MODELS,
     DEFAULT_BASE_URLS,
     DEFAULT_BRIDGE_URL,
-    PANEL_DEFAULT_WIDTH,
-    PANEL_MAX_WIDTH,
-    PANEL_MIN_WIDTH,
+    PANEL_WIDTH,
     PROVIDER_IDS,
     REMOTE_PROVIDER_IDS
 };

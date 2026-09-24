@@ -7,11 +7,10 @@ import aiAssistReducer, {
     setAiError,
     setAiModels,
     setAiPanelVisible,
-    setAiPanelWidth,
     startAiStream,
     updateAiMessage
 } from '../../../src/reducers/ai-assist';
-import {BRIDGE_STATUS, PANEL_MAX_WIDTH, PANEL_MIN_WIDTH} from '../../../src/lib/ai/constants';
+import {BRIDGE_STATUS} from '../../../src/lib/ai/constants';
 
 /* eslint-disable-next-line no-undefined */
 const initial = () => aiAssistReducer(undefined, {type: 'anything'});
@@ -38,14 +37,6 @@ describe('aiAssistReducer', () => {
         const shown = aiAssistReducer(initial(), setAiPanelVisible(true));
         expect(shown.visible).toBe(true);
         expect(aiAssistReducer(shown, setAiPanelVisible(false)).visible).toBe(false);
-    });
-
-    test('clamps the panel width to the allowed range', () => {
-        const tooNarrow = aiAssistReducer(initial(), setAiPanelWidth(PANEL_MIN_WIDTH - 500));
-        expect(tooNarrow.config.panelWidth).toBe(PANEL_MIN_WIDTH);
-
-        const tooWide = aiAssistReducer(initial(), setAiPanelWidth(PANEL_MAX_WIDTH + 500));
-        expect(tooWide.config.panelWidth).toBe(PANEL_MAX_WIDTH);
     });
 
     test('merges config changes rather than replacing the config', () => {

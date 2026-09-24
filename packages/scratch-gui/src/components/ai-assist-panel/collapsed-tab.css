@@ -1,11 +1,17 @@
 @import "../../css/units.css";
 @import "../../css/colors.css";
 
+/*
+    Anchored just outside the wrapper's leading edge. The wrapper is zero-width
+    when the panel is closed and panel-width when it is open, so the tab rides
+    along with the panel instead of being covered by it.
+*/
 .tab {
     position: absolute;
-    inset-inline-end: 0;
+    inset-inline-end: 100%;
     top: 50%;
     transform: translateY(-50%);
+    transition: none;
 
     display: flex;
     flex-direction: column;
@@ -30,14 +36,6 @@
 .tab:focus-visible {
     outline: 0.25rem solid $looks-transparent;
     outline-offset: 0;
-}
-
-/*
-    While the panel is open the tab stays in the DOM so that closing can return
-    focus to it; the panel covers it, so it only needs to sit underneath.
-*/
-.tab.behind-panel {
-    z-index: 0;
 }
 
 .icon {

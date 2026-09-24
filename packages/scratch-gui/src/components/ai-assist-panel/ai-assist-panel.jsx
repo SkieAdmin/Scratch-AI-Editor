@@ -3,7 +3,7 @@ import PropTypes from 'prop-types';
 import React, {useCallback, useEffect, useRef} from 'react';
 import {defineMessages, FormattedMessage, useIntl} from 'react-intl';
 
-import {BRIDGE_STATUS, PANEL_MAX_WIDTH, PANEL_MIN_WIDTH} from '../../lib/ai/constants';
+import {BRIDGE_STATUS} from '../../lib/ai/constants';
 
 import CollapsedTab from './collapsed-tab.jsx';
 import Composer from './composer.jsx';
@@ -14,15 +14,7 @@ import aiIcon from './icon--ai.svg';
 
 import styles from './ai-assist-panel.css';
 
-/** How much one arrow-key press changes the panel width, in pixels. */
-const KEYBOARD_RESIZE_STEP = 16;
-
 const messages = defineMessages({
-    close: {
-        id: 'gui.aiAssist.close',
-        defaultMessage: 'Close AI-Assist',
-        description: 'Label for the button that hides the AI assistant panel'
-    },
     newChat: {
         id: 'gui.aiAssist.newChat',
         defaultMessage: 'New chat',
@@ -32,11 +24,6 @@ const messages = defineMessages({
         id: 'gui.aiAssist.panel',
         defaultMessage: 'AI-Assist panel',
         description: 'ARIA label for the AI assistant panel'
-    },
-    resize: {
-        id: 'gui.aiAssist.resize',
-        defaultMessage: 'Resize the AI-Assist panel',
-        description: 'ARIA label for the handle that changes the width of the AI assistant panel'
     },
     settings: {
         id: 'gui.aiAssist.settings',
@@ -86,8 +73,6 @@ const statusDotClasses = {
     [BRIDGE_STATUS.ERROR]: styles.dotError
 };
 
-const clamp = width => Math.min(PANEL_MAX_WIDTH, Math.max(PANEL_MIN_WIDTH, width));
-
 const AiAssistPanel = props => {
     const {
         bridgeStatus,
@@ -101,15 +86,12 @@ const AiAssistPanel = props => {
         onOpenSettings,
         onSend,
         onToggleVisible,
-        onWidthChange,
         providerLabel,
         streaming,
-        visible,
-        width
+        visible
     } = props;
     const intl = useIntl();
     const composerRef = useRef(null);
-    const dragRef = useRef(null);
     const tabRef = useRef(null);
     const wasVisibleRef = useRef(visible);
 
@@ -128,39 +110,6 @@ const AiAssistPanel = props => {
         onToggleVisible();
     }, [onToggleVisible]);
 
-    const handlePointerDown = useCallback(event => {
-        event.currentTarget.setPointerCapture(event.pointerId);
-        dragRef.current = {
-            isRtl: getComputedStyle(event.currentTarget).direction === 'rtl',
-            startWidth: width,
-            startX: event.clientX
-        };
-    }, [width]);
-
-    const handlePointerMove = useCallback(event => {
-        const drag = dragRef.current;
-        if (!drag) return;
-        // Dragging the handle away from the panel's edge widens the panel, which
-        // is leftwards in LTR and rightwards in RTL.
-        const delta = drag.isRtl ? event.clientX - drag.startX : drag.startX - event.clientX;
-        onWidthChange(clamp(drag.startWidth + delta));
-    }, [onWidthChange]);
-
-    const handlePointerUp = useCallback(event => {
-        event.currentTarget.releasePointerCapture(event.pointerId);
-        dragRef.current = null;
-    }, []);
-
-    const handleResizeKeyDown = useCallback(event => {
-        const isRtl = getComputedStyle(event.currentTarget).direction === 'rtl';
-        let step = 0;
-        if (event.key === 'ArrowLeft') step = isRtl ? -KEYBOARD_RESIZE_STEP : KEYBOARD_RESIZE_STEP;
-        else if (event.key === 'ArrowRight') step = isRtl ? KEYBOARD_RESIZE_STEP : -KEYBOARD_RESIZE_STEP;
-        else return;
-        event.preventDefault();
-        onWidthChange(clamp(width + step));
-    }, [onWidthChange, width]);
-
     return (
         <div className={styles.root}>
             <CollapsedTab
@@ -173,24 +122,8 @@ const AiAssistPanel = props => {
                 aria-label={intl.formatMessage(messages.panel)}
                 className={classNames(styles.panel, {[styles.panelHidden]: !visible})}
                 role="complementary"
-                style={{width: `${width}px`}}
                 onKeyDown={handleKeyDown}
             >
-                <div
-                    aria-label={intl.formatMessage(messages.resize)}
-                    aria-orientation="vertical"
-                    aria-valuemax={PANEL_MAX_WIDTH}
-                    aria-valuemin={PANEL_MIN_WIDTH}
-                    aria-valuenow={width}
-                    className={styles.resizeHandle}
-                    role="separator"
-                    tabIndex={0}
-                    onKeyDown={handleResizeKeyDown}
-                    onPointerDown={handlePointerDown}
-                    onPointerMove={handlePointerMove}
-                    onPointerUp={handlePointerUp}
-                />
-
                 <header className={styles.header}>
                     <span
                         className={classNames(styles.statusDot, statusDotClasses[bridgeStatus])}
@@ -219,13 +152,6 @@ const AiAssistPanel = props => {
                         type="button"
                         onClick={onOpenSettings}
                     >{intl.formatMessage(messages.settings)}</button>
-                    <button
-                        aria-label={intl.formatMessage(messages.close)}
-                        className={styles.closeButton}
-                        title={intl.formatMessage(messages.close)}
-                        type="button"
-                        onClick={onToggleVisible}
-                    >{'×'}</button>
                 </header>
 
                 <p className={styles.providerLine}>
@@ -294,12 +220,9 @@ AiAssistPanel.propTypes = {
     onSend: PropTypes.func.isRequired,
     /** Called with no arguments to flip the panel between open and closed. */
     onToggleVisible: PropTypes.func.isRequired,
-    /** Called with the new width in pixels, repeatedly while the handle is dragged. */
-    onWidthChange: PropTypes.func.isRequired,
     providerLabel: PropTypes.string.isRequired,
     streaming: PropTypes.bool,
-    visible: PropTypes.bool,
-    width: PropTypes.number.isRequired
+    visible: PropTypes.bool
 };
 
 AiAssistPanel.defaultProps = {

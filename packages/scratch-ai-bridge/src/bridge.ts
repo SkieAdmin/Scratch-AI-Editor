@@ -12,7 +12,7 @@ import {
   serveMcpOverHttp,
   serveMcpOverStdio,
 } from './mcp/server'
-import { createProvider, type ProviderContext } from './providers'
+import { createProvider, isProviderId, type ProviderContext } from './providers'
 import { listModels, streamChat } from './providers/openai-compatible'
 
 /** Where the editor endpoint lives. */
@@ -92,6 +92,9 @@ export async function startBridge(options: BridgeOptions = {}): Promise<RunningB
 
   const mcpServers: McpSdkServer[] = []
 
+  // Lets a `chat-cancel` stop the provider request the editor no longer wants.
+  const inFlightChats = new Map<string, AbortController>()
+
   const hub = new EditorHub({
     invokeTimeoutMs: options.invokeTimeoutMs,
     onToolsChanged: (tools) => {
@@ -102,10 +105,19 @@ export async function startBridge(options: BridgeOptions = {}): Promise<RunningB
       log('the editor disconnected')
     },
     onChatRequest: (request, responder) => {
-      void runChat(request, responder, providerContext)
+      const controller = new AbortController()
+      inFlightChats.set(request.id, controller)
+      const context = withApiKey(providerContext, request.provider, request.apiKey)
+      void runChat(request, responder, context, controller.signal).finally(() => {
+        inFlightChats.delete(request.id)
+      })
     },
-    onModelsRequest: (provider, responder) => {
-      void runModelListing(provider, responder, providerContext)
+    onChatCancel: (id) => {
+      inFlightChats.get(id)?.abort()
+      inFlightChats.delete(id)
+    },
+    onModelsRequest: (provider, apiKey, responder) => {
+      void runModelListing(provider, responder, withApiKey(providerContext, provider, apiKey))
     },
   })
 
@@ -216,15 +228,37 @@ async function readJsonBody(request: IncomingMessage): Promise<unknown> {
 }
 
 /**
+ * Apply a key the editor supplied, leaving the bridge's own configuration in
+ * place when it did not send one.
+ * @param context the bridge's resolved provider settings
+ * @param provider which provider the request names
+ * @param apiKey the key the editor sent, if any
+ * @returns the context to serve this one request with
+ */
+function withApiKey(context: ProviderContext, provider: string, apiKey?: string): ProviderContext {
+  if (!apiKey || !isProviderId(provider)) return context
+
+  return {
+    ...context,
+    settings: {
+      ...context.settings,
+      [provider]: { ...context.settings[provider], apiKey },
+    },
+  }
+}
+
+/**
  * Run one chat completion on the editor's behalf and stream it back.
  * @param request what the editor asked for
  * @param responder how to answer it
  * @param context resolved provider settings
+ * @param signal aborts the provider request when the editor abandons the turn
  */
 async function runChat(
   request: ChatRequestEnvelope,
   responder: ChatResponder,
   context: ProviderContext,
+  signal?: AbortSignal,
 ): Promise<void> {
   try {
     const adapter = createProvider(request.provider, context)
@@ -238,6 +272,7 @@ async function runChat(
         maxTokens: request.maxTokens,
       },
       (delta) => responder.delta(delta),
+      signal,
     )
     responder.done(result)
   } catch (error) {

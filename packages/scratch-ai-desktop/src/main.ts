@@ -1,7 +1,8 @@
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { startBridge, type RunningBridge } from '@skieadmin/scratch-ai-bridge'
-import { app, BrowserWindow, dialog, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { configPath, readConfig, writeConfig, type StoredConfig } from './config-store.ts'
 import { startRendererServer, type RendererServer } from './renderer-server.ts'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -16,6 +17,7 @@ const RENDERER_ROOT = join(HERE, '..', 'renderer')
 
 let bridge: RunningBridge | null = null
 let renderer: RendererServer | null = null
+let settingsPath = ''
 
 /**
  * Start the MCP bridge and the loopback server that hosts the editor.
@@ -26,6 +28,17 @@ let renderer: RendererServer | null = null
  * @returns the URL to load in the window
  */
 async function startServices(): Promise<string> {
+  settingsPath = configPath(app.getPath('documents'))
+
+  // The renderer asks for the saved settings synchronously while its store is
+  // being built, so this cannot be a promise-returning channel.
+  ipcMain.on('scratch-ai:read-config', (event) => {
+    event.returnValue = readConfig(settingsPath)
+  })
+  ipcMain.handle('scratch-ai:write-config', (_event, config: StoredConfig) => {
+    writeConfig(settingsPath, config)
+  })
+
   renderer = await startRendererServer(RENDERER_ROOT, LOOPBACK)
 
   bridge = await startBridge({

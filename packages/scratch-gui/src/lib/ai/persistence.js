@@ -1,11 +1,8 @@
 import {getLocalStorageValue, setLocalStorageValue} from '../local-storage';
-import {getDesktopBridgeUrl} from './desktop';
+import {getDesktopBridgeUrl, getDesktopConfigStore} from './desktop';
 import {
     DEFAULT_BASE_URLS,
     DEFAULT_BRIDGE_URL,
-    PANEL_DEFAULT_WIDTH,
-    PANEL_MAX_WIDTH,
-    PANEL_MIN_WIDTH,
     PROVIDER_IDS,
     REMOTE_PROVIDER_IDS
 } from './constants';
@@ -24,7 +21,6 @@ const defaultConfig = () => {
         baseUrls: {...DEFAULT_BASE_URLS},
         bridgeUrl: desktopBridgeUrl ?? DEFAULT_BRIDGE_URL,
         useBridge: desktopBridgeUrl !== null,
-        panelWidth: PANEL_DEFAULT_WIDTH,
         apiKeys: {}
     };
 };
@@ -45,16 +41,25 @@ const readApiKeys = stored => {
     );
 };
 
-const clampWidth = width => Math.min(PANEL_MAX_WIDTH, Math.max(PANEL_MIN_WIDTH, width));
-
 /**
  * Read the persisted assistant configuration, falling back to defaults for any
  * value that is missing or no longer valid.
  * @returns {object} the configuration to initialize the reducer with
  */
+/**
+ * Read whatever was stored last time, from wherever this build keeps it.
+ * @returns {?object} the stored settings, or null when there are none
+ */
+const readStored = () => {
+    const store = getDesktopConfigStore();
+    if (store) return store.readConfig();
+
+    return getLocalStorageValue(STORAGE_KEY, CONFIG_ID);
+};
+
 const loadConfig = () => {
     const defaults = defaultConfig();
-    const stored = getLocalStorageValue(STORAGE_KEY, CONFIG_ID);
+    const stored = readStored();
 
     if (!stored || typeof stored !== 'object') return defaults;
 
@@ -68,7 +73,6 @@ const loadConfig = () => {
         baseUrls: {...defaults.baseUrls, ...(stored.baseUrls || {})},
         bridgeUrl: desktopBridgeUrl ?? (typeof stored.bridgeUrl === 'string' ? stored.bridgeUrl : defaults.bridgeUrl),
         useBridge: desktopBridgeUrl === null ? Boolean(stored.useBridge) : true,
-        panelWidth: clampWidth(Number(stored.panelWidth) || defaults.panelWidth),
         apiKeys: readApiKeys(stored.apiKeys)
     };
 };
@@ -76,22 +80,29 @@ const loadConfig = () => {
 /**
  * Persist the assistant configuration, including API keys.
  *
- * Keys are stored in this browser profile's local storage so the user does not
- * have to retype them. That storage is readable by any script running on this
- * origin, so the settings screen says as much and offers the bridge, which
- * keeps keys in a separate process, as the safer option.
+ * The desktop build writes `Documents/Scratch3_Config.json`, which the user can
+ * open, back up and edit. A browser has no such place, so it falls back to
+ * local storage for this origin.
  * @param {object} config the configuration to persist
  */
 const saveConfig = config => {
-    setLocalStorageValue(STORAGE_KEY, CONFIG_ID, {
+    const stored = {
         providerId: config.providerId,
         modelId: config.modelId,
         baseUrls: config.baseUrls,
-        bridgeUrl: config.bridgeUrl,
         useBridge: config.useBridge,
-        panelWidth: config.panelWidth,
         apiKeys: config.apiKeys
-    });
+    };
+
+    const store = getDesktopConfigStore();
+    if (store) {
+        // The desktop bridge URL carries a token that changes every launch, so
+        // it is never written; the shell supplies a fresh one each time.
+        store.writeConfig(stored);
+        return;
+    }
+
+    setLocalStorageValue(STORAGE_KEY, CONFIG_ID, {...stored, bridgeUrl: config.bridgeUrl});
 };
 
 /**
@@ -102,7 +113,6 @@ const saveConfig = config => {
 const providerNeedsApiKey = providerId => REMOTE_PROVIDER_IDS.includes(providerId);
 
 export {
-    clampWidth,
     defaultConfig,
     loadConfig,
     providerNeedsApiKey,

@@ -30,9 +30,17 @@ export interface EditorSocket {
 
 /** A chat completion the editor asked the bridge to run on its behalf. */
 export interface ChatRequestEnvelope {
+  /** Correlates the reply, and names the request a `chat-cancel` refers to. */
+  id: string
   provider: string
   model: string
   messages: ChatMessage[]
+  /**
+   * The key the user entered in the editor. When absent the bridge falls back
+   * to its own environment or config file, so an operator can still keep the
+   * key out of the editor entirely.
+   */
+  apiKey?: string
   tools?: ChatTool[]
   temperature?: number
   maxTokens?: number
@@ -61,7 +69,9 @@ export interface EditorHubOptions {
   onToolsChanged?: (tools: readonly ToolDefinition[]) => void
   onEditorEvent?: (event: string, payload: unknown) => void
   onChatRequest?: (request: ChatRequestEnvelope, responder: ChatResponder) => void
-  onModelsRequest?: (provider: string, responder: ModelsResponder) => void
+  onModelsRequest?: (provider: string, apiKey: string | undefined, responder: ModelsResponder) => void
+  /** Called when the editor abandons a chat, so the provider request can be dropped. */
+  onChatCancel?: (id: string) => void
 }
 
 /** A tool invocation waiting for the editor to answer. */
@@ -167,6 +177,9 @@ export class EditorHub {
         break
       case 'models':
         this.handleModels(envelope)
+        break
+      case 'chat-cancel':
+        this.options.onChatCancel?.(String(envelope.id))
         break
       case 'ping':
         this.send({ type: 'pong' })
@@ -304,7 +317,8 @@ export class EditorHub {
       return
     }
 
-    this.options.onModelsRequest(String(envelope.provider), responder)
+    const apiKey = typeof envelope.apiKey === 'string' ? envelope.apiKey : undefined
+    this.options.onModelsRequest(String(envelope.provider), apiKey, responder)
   }
 
   /** Begin pinging the attached editor. */

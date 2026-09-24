@@ -52,6 +52,12 @@ export interface ParsedToolCall {
   id: string
   name: string
   args: unknown
+  /**
+   * The argument text exactly as the model produced it. The editor sends this
+   * back when it reports the tool's result, and a re-serialized copy would not
+   * always match what the model believes it asked for.
+   */
+  rawArguments: string
 }
 
 /** One fragment of a tool call as it arrives mid-stream. */

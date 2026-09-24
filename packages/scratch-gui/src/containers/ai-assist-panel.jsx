@@ -6,7 +6,7 @@ import {connect} from 'react-redux';
 import VM from '@scratch/scratch-vm';
 
 import AiAssistPanelComponent from '../components/ai-assist-panel/ai-assist-panel.jsx';
-import BridgeClient from '../lib/ai/bridge-client';
+import BridgeClient, {setActiveBridge} from '../lib/ai/bridge-client';
 import intlShape from '../lib/intlShape.js';
 import {createId, runChatTurn} from '../lib/ai/chat-session';
 import {buildSystemPrompt} from '../lib/ai/system-prompt';
@@ -14,7 +14,7 @@ import {BRIDGE_STATUS, DEEPSEEK_MODELS, PROVIDER_IDS} from '../lib/ai/constants'
 import {providerNeedsApiKey, saveConfig} from '../lib/ai/persistence';
 import {providerMessages} from '../lib/ai/provider-messages';
 import {getProvider} from '../lib/ai/providers';
-import {TOOL_DEFINITIONS, createToolRunner} from '../lib/ai/scratch-tools';
+import {TOOL_DEFINITIONS, createToolRunner, toChatTools} from '../lib/ai/scratch-tools';
 import {
     addAiMessage,
     clearAiChat,
@@ -22,7 +22,6 @@ import {
     setAiBridgeStatus,
     setAiError,
     setAiPanelVisible,
-    setAiPanelWidth,
     startAiStream,
     updateAiMessage
 } from '../reducers/ai-assist';
@@ -57,14 +56,17 @@ class AiAssistPanel extends React.Component {
             'handleNewChat',
             'handleSend',
             'handleToggleVisible',
-            'handleToolInvoke',
-            'handleWidthChange'
+            'handleToolInvoke'
         ]);
 
         this.toolRunner = createToolRunner(props.vm);
+        // The bridge registers these as MCP tools, which keeps the MCP shape;
+        // a chat request needs them restated as function tools.
         this.toolDefinitions = TOOL_DEFINITIONS;
+        this.chatTools = toChatTools(TOOL_DEFINITIONS);
         this.bridge = null;
         this.abortController = null;
+        this.draft = null;
     }
 
     componentDidMount () {
@@ -93,11 +95,13 @@ class AiAssistPanel extends React.Component {
         });
         this.bridge.setToolDefinitions(this.toolDefinitions);
         this.bridge.connect();
+        setActiveBridge(this.bridge);
     }
 
     closeBridge () {
         if (!this.bridge) return;
         this.bridge.disconnect();
+        setActiveBridge(null);
         this.bridge = null;
     }
 
@@ -114,13 +118,6 @@ class AiAssistPanel extends React.Component {
      */
     handleToolInvoke (name, args) {
         return this.toolRunner.runTool(name, args);
-    }
-
-    handleWidthChange (width) {
-        this.props.onSetWidth(width);
-        // The store has no thunk middleware, so persistence happens at the call
-        // site, the same way the theme and color-mode settings are written through.
-        saveConfig({...this.props.config, panelWidth: width});
     }
 
     /**
@@ -177,8 +174,18 @@ class AiAssistPanel extends React.Component {
             }
             return {
                 chat: request => this.bridge.chat(
-                    {providerId, model: request.model, messages: request.messages, tools: request.tools},
-                    request.onContentDelta
+                    {
+                        provider: providerId,
+                        model: request.model,
+                        messages: request.messages,
+                        tools: request.tools,
+                        apiKey: apiKeys[providerId]
+                    },
+                    {
+                        onContentDelta: request.onContentDelta,
+                        onReasoningDelta: request.onReasoningDelta,
+                        signal: request.signal
+                    }
                 )
             };
         }
@@ -229,25 +236,26 @@ class AiAssistPanel extends React.Component {
                     spriteNames: this.props.spriteNames,
                     revision: this.toolRunner.getRevision()
                 }),
-                toolDefinitions: this.toolDefinitions,
+                toolDefinitions: this.chatTools,
                 runTool: this.toolRunner.runTool,
                 signal: this.abortController.signal,
                 onMessageStart: id => {
-                    this.props.onAddMessage({
-                        id,
-                        role: 'assistant',
-                        content: '',
-                        reasoning: '',
-                        toolCalls: [],
-                        createdAt: Date.now()
-                    });
+                    this.draft = null;
                     this.props.onStartStream(id);
                 },
                 onContentDelta: (id, delta) => this.appendTo(id, 'content', delta),
                 onReasoningDelta: (id, delta) => this.appendTo(id, 'reasoning', delta),
                 onToolCallStart: (id, call) => this.patchToolCall(id, {...call, status: 'running'}),
                 onToolCallEnd: (id, call) => this.patchToolCall(id, call),
-                onMessageEnd: () => this.props.onEndStream()
+                onMessageEnd: (id, completion) => {
+                    // A model can answer without streaming, in which case the
+                    // bubble has not been created yet but there is text to show.
+                    if (!this.draft && completion && completion.content) {
+                        this.startDraft(id, {content: completion.content});
+                    }
+                    this.draft = null;
+                    this.props.onEndStream();
+                }
             });
         } catch (e) {
             if (e.name !== 'AbortError') this.props.onSetError(e.message);
@@ -257,23 +265,53 @@ class AiAssistPanel extends React.Component {
         }
     }
 
+    /**
+     * Add the assistant bubble, carrying whatever arrived first.
+     *
+     * The bubble is created here rather than when the turn starts, so a turn
+     * that fails before the model says anything leaves no empty bubble behind.
+     * @param {string} id the message id for this turn
+     * @param {object} fields the first content or reasoning to show
+     */
+    startDraft (id, fields) {
+        this.draft = {id, content: '', reasoning: '', toolCalls: [], ...fields};
+        this.props.onAddMessage({
+            id,
+            role: 'assistant',
+            createdAt: Date.now(),
+            ...this.draft
+        });
+    }
+
+    /**
+     * Accumulate a streamed fragment.
+     *
+     * The running text is kept here rather than read back from the store,
+     * because redux props do not update between the many dispatches a single
+     * streamed reply makes, and reading a stale message would drop tokens.
+     * @param {string} id the message being streamed
+     * @param {string} field either `content` or `reasoning`
+     * @param {string} delta the fragment to append
+     */
     appendTo (id, field, delta) {
-        const message = this.props.messages.find(candidate => candidate.id === id);
-        if (!message) return;
-        this.props.onUpdateMessage(id, {[field]: (message[field] || '') + delta});
+        if (!this.draft) {
+            this.startDraft(id, {[field]: delta});
+            return;
+        }
+        this.draft[field] += delta;
+        this.props.onUpdateMessage(id, {[field]: this.draft[field]});
     }
 
     patchToolCall (id, call) {
-        const message = this.props.messages.find(candidate => candidate.id === id);
-        if (!message) return;
+        if (!this.draft) this.startDraft(id, {});
 
-        const existing = message.toolCalls || [];
+        const existing = this.draft.toolCalls;
         const index = existing.findIndex(candidate => candidate.id === call.id);
-        const toolCalls = index === -1 ?
+        this.draft.toolCalls = index === -1 ?
             existing.concat([call]) :
             existing.map((candidate, i) => (i === index ? {...candidate, ...call} : candidate));
 
-        this.props.onUpdateMessage(id, {toolCalls});
+        this.props.onUpdateMessage(id, {toolCalls: this.draft.toolCalls});
     }
 
     currentModel () {
@@ -297,14 +335,12 @@ class AiAssistPanel extends React.Component {
                 providerLabel={this.props.intl.formatMessage(providerMessages[this.props.config.providerId])}
                 streaming={this.props.streaming}
                 visible={this.props.visible}
-                width={this.props.config.panelWidth}
                 onAbort={this.handleAbort}
                 onAttachFiles={this.handleAttachFiles}
                 onNewChat={this.handleNewChat}
                 onOpenSettings={this.props.onOpenSettings}
                 onSend={this.handleSend}
                 onToggleVisible={this.handleToggleVisible}
-                onWidthChange={this.handleWidthChange}
             />
         );
     }
@@ -317,7 +353,6 @@ AiAssistPanel.propTypes = {
         baseUrls: PropTypes.object,
         bridgeUrl: PropTypes.string,
         modelId: PropTypes.string,
-        panelWidth: PropTypes.number,
         providerId: PropTypes.string,
         useBridge: PropTypes.bool
     }).isRequired,
@@ -331,7 +366,6 @@ AiAssistPanel.propTypes = {
     onOpenSettings: PropTypes.func.isRequired,
     onSetBridgeStatus: PropTypes.func.isRequired,
     onSetError: PropTypes.func.isRequired,
-    onSetWidth: PropTypes.func.isRequired,
     onStartStream: PropTypes.func.isRequired,
     onSetVisible: PropTypes.func.isRequired,
     onUpdateMessage: PropTypes.func.isRequired,
@@ -359,7 +393,6 @@ const mapDispatchToProps = dispatch => ({
     onOpenSettings: () => dispatch(openAiSettingsModal()),
     onSetBridgeStatus: status => dispatch(setAiBridgeStatus(status)),
     onSetError: error => dispatch(setAiError(error)),
-    onSetWidth: width => dispatch(setAiPanelWidth(width)),
     onStartStream: id => dispatch(startAiStream(id)),
     onSetVisible: visible => dispatch(setAiPanelVisible(visible)),
     onUpdateMessage: (id, patch) => dispatch(updateAiMessage(id, patch))

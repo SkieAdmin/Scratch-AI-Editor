@@ -16,4 +16,16 @@ const getDesktopBridgeUrl = () => {
  */
 const isDesktop = () => getDesktopBridgeUrl() !== null;
 
-export {getDesktopBridgeUrl, isDesktop};
+/**
+ * The desktop shell's settings store, which keeps the configuration in a file
+ * the user can open (`Documents/Scratch3_Config.json`) rather than in browser
+ * storage. Absent in a browser.
+ * @returns {?object} an object with `readConfig` and `writeConfig`, or null
+ */
+const getDesktopConfigStore = () => {
+    const desktop = typeof window === 'undefined' ? null : window.scratchAiDesktop;
+    if (!desktop || typeof desktop.readConfig !== 'function') return null;
+    return desktop;
+};
+
+export {getDesktopBridgeUrl, getDesktopConfigStore, isDesktop};

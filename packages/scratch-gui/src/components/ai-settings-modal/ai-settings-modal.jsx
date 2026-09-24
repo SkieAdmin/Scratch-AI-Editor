@@ -530,7 +530,6 @@ AiSettingsModal.propTypes = {
         baseUrls: PropTypes.objectOf(PropTypes.string).isRequired,
         bridgeUrl: PropTypes.string.isRequired,
         modelId: PropTypes.string.isRequired,
-        panelWidth: PropTypes.number.isRequired,
         providerId: PropTypes.oneOf(Object.values(PROVIDER_IDS)).isRequired,
         useBridge: PropTypes.bool.isRequired
     }).isRequired,

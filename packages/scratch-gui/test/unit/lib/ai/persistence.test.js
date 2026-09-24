@@ -1,16 +1,10 @@
 import {
-    clampWidth,
     defaultConfig,
     loadConfig,
     providerNeedsApiKey,
     saveConfig
 } from '../../../../src/lib/ai/persistence';
-import {
-    DEFAULT_BASE_URLS,
-    PANEL_MAX_WIDTH,
-    PANEL_MIN_WIDTH,
-    PROVIDER_IDS
-} from '../../../../src/lib/ai/constants';
+import {DEFAULT_BASE_URLS, PROVIDER_IDS} from '../../../../src/lib/ai/constants';
 
 const STORAGE_KEY = 'scratch-gui:ai-assist';
 
@@ -28,8 +22,7 @@ describe('ai persistence', () => {
             ...defaultConfig(),
             providerId: PROVIDER_IDS.OPENROUTER,
             modelId: 'some/model',
-            useBridge: true,
-            panelWidth: 420
+            useBridge: true
         };
         saveConfig(config);
 
@@ -67,20 +60,47 @@ describe('ai persistence', () => {
         expect(loaded.baseUrls[PROVIDER_IDS.DEEPSEEK]).toBe(DEFAULT_BASE_URLS[PROVIDER_IDS.DEEPSEEK]);
     });
 
-    test('clamps a stored width that is out of range', () => {
-        writeRaw({panelWidth: 99999});
-        expect(loadConfig().panelWidth).toBe(PANEL_MAX_WIDTH);
+    test('reads and writes the desktop config file when the shell provides one', () => {
+        const file = {};
+        window.scratchAiDesktop = {
+            bridgeUrl: 'ws://127.0.0.1:1/editor?token=x',
+            readConfig: () => file.saved,
+            writeConfig: config => {
+                file.saved = config;
+            }
+        };
+
+        saveConfig({...defaultConfig(), modelId: 'deepseek-chat', apiKeys: {deepseek: 'sk-file'}});
+
+        expect(file.saved.modelId).toBe('deepseek-chat');
+        expect(file.saved.apiKeys).toEqual({deepseek: 'sk-file'});
+        // Nothing reaches local storage while the shell owns the settings.
+        expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+        expect(loadConfig().modelId).toBe('deepseek-chat');
+
+        delete window.scratchAiDesktop;
+    });
+
+    test('never stores the desktop bridge URL, whose token changes each launch', () => {
+        const file = {};
+        window.scratchAiDesktop = {
+            bridgeUrl: 'ws://127.0.0.1:1/editor?token=x',
+            readConfig: () => file.saved,
+            writeConfig: config => {
+                file.saved = config;
+            }
+        };
+
+        saveConfig(defaultConfig());
+
+        expect(file.saved).not.toHaveProperty('bridgeUrl');
+
+        delete window.scratchAiDesktop;
     });
 
     test('survives corrupt storage', () => {
         localStorage.setItem(STORAGE_KEY, 'not json at all');
         expect(loadConfig()).toEqual(defaultConfig());
-    });
-
-    test('clampWidth bounds both ends', () => {
-        expect(clampWidth(0)).toBe(PANEL_MIN_WIDTH);
-        expect(clampWidth(100000)).toBe(PANEL_MAX_WIDTH);
-        expect(clampWidth(400)).toBe(400);
     });
 
     test('only the internet-facing providers need an API key', () => {

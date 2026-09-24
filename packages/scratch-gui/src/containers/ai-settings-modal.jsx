@@ -4,6 +4,7 @@ import React from 'react';
 import {connect} from 'react-redux';
 
 import AiSettingsModalComponent from '../components/ai-settings-modal/ai-settings-modal.jsx';
+import {getActiveBridge} from '../lib/ai/bridge-client';
 import {getProvider} from '../lib/ai/providers';
 import {DEEPSEEK_MODELS, PROVIDER_IDS} from '../lib/ai/constants';
 import {saveConfig} from '../lib/ai/persistence';
@@ -38,6 +39,26 @@ class AiSettingsModal extends React.Component {
         this.refreshModelsFor(this.props.config.providerId);
     }
 
+    /**
+     * Ask whoever holds the credentials for this provider.
+     *
+     * With the bridge on, it is the bridge: it has the API key, so it can list
+     * models the page has no way to authenticate for.
+     * @param {object} provider the provider being listed
+     * @param {string} providerId that provider's identifier
+     * @returns {Promise<Array<object>>} the available models
+     */
+    fetchModels (provider, providerId) {
+        const bridge = getActiveBridge();
+        const apiKey = (this.props.config.apiKeys || {})[providerId];
+        if (this.props.config.useBridge && bridge) return bridge.listModels(providerId, apiKey);
+
+        return provider.listModels({
+            apiKey,
+            baseUrl: this.props.config.baseUrls[providerId]
+        });
+    }
+
     async refreshModelsFor (providerId) {
         const provider = getProvider(providerId);
 
@@ -51,11 +72,7 @@ class AiSettingsModal extends React.Component {
 
         this.props.onSetModels([], true);
         try {
-            const models = await provider.listModels({
-                apiKey: (this.props.config.apiKeys || {})[providerId],
-                baseUrl: this.props.config.baseUrls[providerId]
-            });
-            this.props.onSetModels(models, false);
+            this.props.onSetModels(await this.fetchModels(provider, providerId), false);
         } catch (e) {
             this.props.onSetModels([], false);
             this.props.onSetError(e.message);
@@ -96,7 +113,6 @@ AiSettingsModal.propTypes = {
         baseUrls: PropTypes.object,
         bridgeUrl: PropTypes.string,
         modelId: PropTypes.string,
-        panelWidth: PropTypes.number,
         providerId: PropTypes.string,
         useBridge: PropTypes.bool
     }).isRequired,

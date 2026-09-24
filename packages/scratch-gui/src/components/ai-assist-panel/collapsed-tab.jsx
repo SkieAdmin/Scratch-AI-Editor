@@ -1,4 +1,3 @@
-import classNames from 'classnames';
 import PropTypes from 'prop-types';
 import React, {forwardRef} from 'react';
 import {FormattedMessage} from 'react-intl';
@@ -13,7 +12,7 @@ const CollapsedTab = forwardRef((props, ref) => {
     return (
         <button
             aria-expanded={expanded}
-            className={classNames(styles.tab, {[styles.behindPanel]: expanded})}
+            className={styles.tab}
             ref={ref}
             type="button"
             onClick={onClick}

@@ -32,6 +32,7 @@ import DragLayer from '../../containers/drag-layer.jsx';
 import ConnectionModal from '../../containers/connection-modal.jsx';
 import TelemetryModal from '../telemetry-modal/telemetry-modal.jsx';
 import AiAssistPanel from '../../containers/ai-assist-panel.jsx';
+import {PANEL_WIDTH} from '../../lib/ai/constants';
 import AiAboutModal from '../../containers/ai-about-modal.jsx';
 import AiSettingsModal from '../../containers/ai-settings-modal.jsx';
 
@@ -121,7 +122,6 @@ const GUIComponent = props => {
         activeTabIndex,
         aiAboutModalVisible,
         aiAssistVisible,
-        aiAssistWidth,
         aiSettingsModalVisible,
         alertsVisible,
         authorId,
@@ -263,11 +263,11 @@ const GUIComponent = props => {
         the threshold lets `resolveStageSize` fall back to the constrained stage
         instead of the layout overflowing.
     */
-    const fullSizeMinWidth = layout.fullSizeMinWidth + (aiAssistVisible ? aiAssistWidth : 0);
+    const fullSizeMinWidth = layout.fullSizeMinWidth + (aiAssistVisible ? PANEL_WIDTH : 0);
 
     return (<MediaQuery minWidth={fullSizeMinWidth}>{isFullSize => {
         const stageSize = resolveStageSize(stageSizeMode, isFullSize);
-        const aiAssistStyle = aiAssistVisible ? {width: `${aiAssistWidth}px`} : {};
+        const aiAssistStyle = aiAssistVisible ? {width: `${PANEL_WIDTH}px`} : {};
         const boxStyles = classNames(styles.bodyWrapper, {
             [styles.bodyWrapperWithoutMenuBar]: menuBarHidden
         });
@@ -614,7 +614,6 @@ GUIComponent.propTypes = {
     activeTabIndex: PropTypes.number,
     aiAboutModalVisible: PropTypes.bool,
     aiAssistVisible: PropTypes.bool,
-    aiAssistWidth: PropTypes.number,
     aiSettingsModalVisible: PropTypes.bool,
     authorId: PropTypes.oneOfType([PropTypes.string, PropTypes.bool]), // can be false
     authorThumbnailUrl: PropTypes.string,
@@ -737,7 +736,6 @@ GUIComponent.defaultProps = {
 const mapStateToProps = state => ({
     aiAboutModalVisible: state.scratchGui.modals.aiAboutModal,
     aiAssistVisible: state.scratchGui.aiAssist.visible,
-    aiAssistWidth: state.scratchGui.aiAssist.config.panelWidth,
     aiSettingsModalVisible: state.scratchGui.modals.aiSettingsModal,
     // This is the button's mode, as opposed to the actual current state
     blocksId: state.scratchGui.timeTravel.year.toString(),

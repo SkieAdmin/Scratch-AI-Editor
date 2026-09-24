@@ -1,8 +1,7 @@
 import {BRIDGE_STATUS} from '../lib/ai/constants';
-import {clampWidth, loadConfig} from '../lib/ai/persistence';
+import {loadConfig} from '../lib/ai/persistence';
 
 const SET_VISIBLE = 'scratch-gui/ai-assist/SET_VISIBLE';
-const SET_WIDTH = 'scratch-gui/ai-assist/SET_WIDTH';
 const SET_CONFIG = 'scratch-gui/ai-assist/SET_CONFIG';
 const SET_MODELS = 'scratch-gui/ai-assist/SET_MODELS';
 const SET_BRIDGE_STATUS = 'scratch-gui/ai-assist/SET_BRIDGE_STATUS';
@@ -30,8 +29,6 @@ const reducer = function (state, action) {
     switch (action.type) {
     case SET_VISIBLE:
         return {...state, visible: action.visible};
-    case SET_WIDTH:
-        return {...state, config: {...state.config, panelWidth: clampWidth(action.width)}};
     case SET_CONFIG:
         return {...state, config: {...state.config, ...action.config}};
     case SET_MODELS:
@@ -61,8 +58,6 @@ const reducer = function (state, action) {
 };
 
 const setAiPanelVisible = visible => ({type: SET_VISIBLE, visible});
-
-const setAiPanelWidth = width => ({type: SET_WIDTH, width});
 
 const setAiModels = (models, loading = false) => ({type: SET_MODELS, models, loading});
 
@@ -101,7 +96,6 @@ export {
     setAiError,
     setAiModels,
     setAiPanelVisible,
-    setAiPanelWidth,
     startAiStream,
     updateAiMessage
 };

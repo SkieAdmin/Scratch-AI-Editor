@@ -322,7 +322,27 @@ const WRITE_TOOL_NAMES = [
     'set_variable'
 ];
 
+/**
+ * Restate the catalogue the way an OpenAI-compatible chat API wants it.
+ *
+ * MCP asks for `{name, description, inputSchema}`, while the chat APIs every
+ * provider here speaks want each tool wrapped as
+ * `{type: 'function', function: {name, description, parameters}}`. Sending the
+ * MCP shape to DeepSeek is rejected with "tools[0]: missing field `type`".
+ * @param {Array<object>} definitions the catalogue in MCP form
+ * @returns {Array<object>} the same tools in chat-completions form
+ */
+const toChatTools = definitions => definitions.map(tool => ({
+    type: 'function',
+    function: {
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.inputSchema
+    }
+}));
+
 export {
     TOOL_DEFINITIONS,
+    toChatTools,
     WRITE_TOOL_NAMES
 };
