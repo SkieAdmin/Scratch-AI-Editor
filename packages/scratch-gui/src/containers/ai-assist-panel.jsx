@@ -241,10 +241,7 @@ class AiAssistPanel extends React.Component {
                 transport,
                 model: this.props.config.modelId,
                 history,
-                systemPrompt: buildSystemPrompt({
-                    spriteNames: this.props.spriteNames,
-                    revision: this.toolRunner.getRevision()
-                }),
+                systemPrompt: buildSystemPrompt({spriteNames: this.props.spriteNames}),
                 toolDefinitions: this.chatTools,
                 runTool: this.toolRunner.runTool,
                 maxRounds: this.props.config.maxToolRounds,

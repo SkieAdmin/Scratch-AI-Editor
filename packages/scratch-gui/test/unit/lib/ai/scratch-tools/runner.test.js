@@ -135,6 +135,13 @@ const makeVm = () => {
             getTargetById: id => targets.find(target => target.id === id),
             getSpriteTargetByName: name => targets.find(target => !target.isStage && target.getName() === name),
             /* eslint-disable-next-line no-undefined */
+            get _primitives () {
+                return Object.fromEntries(PRIMITIVE_OPCODES.map(opcode => [opcode, () => {}]));
+            },
+            get _hats () {
+                return Object.fromEntries(HAT_OPCODES.map(opcode => [opcode, {}]));
+            },
+            /* eslint-disable-next-line no-undefined */
             getOpcodeFunction: opcode => (PRIMITIVE_OPCODES.includes(opcode) ? () => {} : undefined),
             getIsHat: opcode => HAT_OPCODES.includes(opcode),
             getBlocksXML: () => [],
@@ -158,56 +165,34 @@ const makeVm = () => {
     return {sprite, stage, vm};
 };
 
-describe('createToolRunner revision guard', () => {
-    test('a write bumps the revision and reports it', async () => {
-        const {vm} = makeVm();
-        const runner = createToolRunner(vm);
-
-        expect(runner.getRevision()).toBe(0);
-
-        const result = await runner.runTool('rename_sprite', {targetId: 'Cat', name: 'Dog'});
-
-        expect(result.name).toBe('Dog');
-        expect(result.revision).toBe(1);
-        expect(runner.getRevision()).toBe(1);
-    });
-
-    test('a write planned against a stale revision is rejected, naming both revisions', async () => {
+/*
+ * An earlier version made every write carry the revision it was planned against
+ * and rejected any mismatch. The counter only ever moved on the assistant's own
+ * writes, so a turn that made several edits failed every call after the first
+ * and retried them forever. It could not see a change made in the editor, which
+ * was the thing it was supposed to guard against.
+ */
+describe('createToolRunner writing several times in one turn', () => {
+    test('a second write is not blocked by the first', async () => {
         const {vm} = makeVm();
         const runner = createToolRunner(vm);
 
         await runner.runTool('rename_sprite', {targetId: 'Cat', name: 'Dog'});
+        const second = await runner.runTool('rename_sprite', {targetId: 'Dog', name: 'Bird'});
 
-        await expect(runner.runTool('rename_sprite', {
-            targetId: 'Dog',
-            name: 'Bird',
-            expectedRevision: 0
-        })).rejects.toThrow(/expected revision 0.*revision 1/s);
-
-        expect(vm.renameSprite).toHaveBeenCalledTimes(1);
-        expect(runner.getRevision()).toBe(1);
+        expect(second.name).toBe('Bird');
+        expect(vm.renameSprite).toHaveBeenCalledTimes(2);
     });
 
-    test('a write planned against the current revision goes through', async () => {
+    test('a long run of writes all go through', async () => {
         const {vm} = makeVm();
         const runner = createToolRunner(vm);
 
-        const result = await runner.runTool('rename_sprite', {
-            targetId: 'Cat',
-            name: 'Dog',
-            expectedRevision: 0
-        });
+        for (let i = 0; i < 10; i++) {
+            await runner.runTool('rename_sprite', {targetId: vm.runtime.targets[1].name, name: `Sprite${i}`});
+        }
 
-        expect(result.revision).toBe(1);
-    });
-
-    test('a read is not guarded and does not bump the revision', async () => {
-        const {vm} = makeVm();
-        const runner = createToolRunner(vm);
-
-        await runner.runTool('list_sprites', {});
-
-        expect(runner.getRevision()).toBe(0);
+        expect(vm.renameSprite).toHaveBeenCalledTimes(10);
     });
 });
 
@@ -257,7 +242,6 @@ describe('createToolRunner argument validation', () => {
         })).rejects.toThrow();
 
         expect(sprite.blocks.createBlock).not.toHaveBeenCalled();
-        expect(runner.getRevision()).toBe(0);
     });
 });
 
@@ -321,7 +305,6 @@ describe('get_project_summary', () => {
 
         const summary = await runner.runTool('get_project_summary', {});
 
-        expect(summary.revision).toBe(0);
         expect(summary.editingTargetId).toBe('sprite-id');
         expect(summary.totals).toEqual({sprites: 1, scripts: 1});
 
@@ -506,5 +489,33 @@ describe('search_library', () => {
         const {runTool} = createToolRunner(vm);
 
         await expect(runTool('search_library', {kind: 'wallpaper'})).rejects.toThrow(/is not a library/);
+    });
+});
+
+describe('unknown opcodes', () => {
+    /*
+     * Scratch names its palettes in the plural but its opcodes in the singular,
+     * so a model reaching for the operators palette writes `operators_join`
+     * where the block is `operator_join`. Saying so costs one round; sending it
+     * back to the catalogue costs several.
+     */
+    test('names the real opcode when the guess is close', async () => {
+        const {vm} = makeVm();
+        const {runTool} = createToolRunner(vm);
+
+        await expect(runTool('create_script', {
+            targetId: 'Cat',
+            blocks: [{opcode: 'looks_says', inputs: {}}]
+        })).rejects.toThrow(/Did you mean.*looks_say/s);
+    });
+
+    test('points at the catalogue when nothing is close', async () => {
+        const {vm} = makeVm();
+        const {runTool} = createToolRunner(vm);
+
+        await expect(runTool('create_script', {
+            targetId: 'Cat',
+            blocks: [{opcode: 'zzz_nonsense', inputs: {}}]
+        })).rejects.toThrow(/get_block_catalog/);
     });
 });

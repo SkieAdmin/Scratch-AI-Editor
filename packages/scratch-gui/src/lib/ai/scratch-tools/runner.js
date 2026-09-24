@@ -4,7 +4,6 @@ import soundLibraryContent from '../../libraries/sounds.json';
 import spriteLibraryContent from '../../libraries/sprites.json';
 import makeToolboxXML from '../../make-toolbox-xml';
 import randomizeSpritePosition from '../../randomize-sprite-position';
-import {WRITE_TOOL_NAMES} from './definitions';
 import {
     BROADCAST_VARIABLE_TYPE,
     LIST_VARIABLE_TYPE,
@@ -57,8 +56,6 @@ const VARIABLE_FIELD_TYPES = {
     VARIABLE: SCALAR_VARIABLE_TYPE
 };
 
-const WRITE_TOOLS = new Set(WRITE_TOOL_NAMES);
-
 /**
  * Extensions the assistant can load. Their blocks only exist once loaded, which
  * is why an opcode from one is unknown until then.
@@ -108,17 +105,9 @@ const assertNumber = (name, value) => {
  * @param {object} [options] overrides for the tool layer
  * @param {Function} [options.getToolboxXml] returns the toolbox XML for a target; supply this where
  *   scratch-blocks is not loaded, otherwise the editor's own toolbox is used
- * @returns {{runTool: Function, getRevision: Function}} the tool runner
+ * @returns {{runTool: Function}} the tool runner
  */
 const createToolRunner = (vm, options = {}) => {
-    /**
-     * Bumped after every successful write. A write may carry the revision it
-     * was planned against; a mismatch means the child edited the project while
-     * the assistant was thinking, and the write is refused rather than
-     * clobbering their work.
-     */
-    let revision = 0;
-
     const getToolboxXml = options.getToolboxXml ||
         (target => makeToolboxXML(false, target.isStage, target.id, vm.runtime.getBlocksXML(target)));
 
@@ -175,17 +164,6 @@ const createToolRunner = (vm, options = {}) => {
         }
     };
 
-    const assertRevision = args => {
-        const expected = args.expectedRevision;
-        if (typeof expected === 'undefined' || expected === null) return;
-        if (expected !== revision) {
-            throw new Error(
-                `Conflict: this write expected revision ${expected} but the project is at revision ` +
-                `${revision}. It changed while you were working. Read the project again before retrying.`
-            );
-        }
-    };
-
     const findVariable = (target, name, type) => {
         const search = owner => Object.keys(owner.variables)
             .map(id => owner.variables[id])
@@ -236,15 +214,49 @@ const createToolRunner = (vm, options = {}) => {
         return (typeof spec.opcode === 'string' ? [spec.opcode] : []).concat(nested);
     });
 
+    /**
+     * Opcodes close enough to a mistyped one to be worth offering.
+     *
+     * Scratch names its categories in the plural but its opcodes in the
+     * singular, so a model reaching for the "operators" palette writes
+     * `operators_join` where the block is `operator_join`. Naming the real one
+     * turns a dead end into a one-step correction.
+     * @param {string} wanted the opcode that was not found
+     * @returns {Array<string>} the closest real opcodes
+     */
+    const suggestOpcodes = wanted => {
+        const [, ...rest] = wanted.toLowerCase().split('_');
+        const action = rest.join('_');
+        if (action === '') return [];
+
+        const known = Object.keys(vm.runtime._primitives).concat(Object.keys(vm.runtime._hats));
+
+        // Only near-identical action names count. Matching on the category
+        // alone would answer "motion_teleport_to_mars" with every motion block,
+        // which reads like an answer while telling the model nothing.
+        return known
+            .filter(opcode => {
+                const candidate = opcode.toLowerCase().split('_')
+                    .slice(1)
+                    .join('_');
+                if (candidate === '') return false;
+                const longer = action.length >= candidate.length ? action : candidate;
+                const shorter = action.length >= candidate.length ? candidate : action;
+                return longer.startsWith(shorter) && longer.length - shorter.length <= 2;
+            })
+            .slice(0, MAX_SUGGESTIONS);
+    };
+
     const assertKnownOpcode = opcode => {
         if (typeof opcode !== 'string') {
             throw new Error(`Every block spec needs an "opcode" string, got ${JSON.stringify(opcode)}.`);
         }
         if (!isKnownOpcode(opcode)) {
-            throw new Error(
-                `"${opcode}" is not an opcode this project knows. Call get_block_catalog to see the ` +
-                'opcodes that exist, and check for a typo or a missing extension.'
-            );
+            const suggestions = suggestOpcodes(opcode);
+            const hint = suggestions.length > 0 ?
+                ` Did you mean: ${suggestions.join(', ')}?` :
+                ' Call get_block_catalog to see the opcodes that exist, and check for a missing extension.';
+            throw new Error(`"${opcode}" is not an opcode this project knows.${hint}`);
         }
     };
 
@@ -735,7 +747,7 @@ const createToolRunner = (vm, options = {}) => {
      * Run one tool call.
      * @param {string} name the tool to run
      * @param {object} [args] the tool's arguments, as written by the model
-     * @returns {Promise<object>} the tool's result, plus the revision it left the project at
+     * @returns {Promise<object>} the tool's result
      */
     const runTool = async (name, args = {}) => {
         const handler = handlers[name];
@@ -746,22 +758,10 @@ const createToolRunner = (vm, options = {}) => {
             throw new Error(`Arguments for "${name}" must be an object, got ${JSON.stringify(args)}.`);
         }
 
-        const isWrite = WRITE_TOOLS.has(name);
-        if (isWrite) assertRevision(args);
-
-        const result = await handler(args);
-        if (isWrite) revision += 1;
-
-        return {...result, revision};
+        return await handler(args);
     };
 
-    /**
-     * The project's current revision, which every write bumps.
-     * @returns {number} the revision counter
-     */
-    const getRevision = () => revision;
-
-    return {getRevision, runTool};
+    return {runTool};
 };
 
 export {createToolRunner};

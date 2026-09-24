@@ -4,7 +4,7 @@
  * a capability added to this layer is available to both at once.
  */
 
-export {TOOL_DEFINITIONS, WRITE_TOOL_NAMES, toChatTools} from './definitions';
+export {TOOL_DEFINITIONS, toChatTools} from './definitions';
 export {createToolRunner} from './runner';
 export {
     buildBlockCatalog,

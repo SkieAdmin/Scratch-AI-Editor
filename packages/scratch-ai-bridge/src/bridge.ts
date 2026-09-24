@@ -152,9 +152,19 @@ export async function startBridge(options: BridgeOptions = {}): Promise<RunningB
     hub,
     async close() {
       hub.close()
+
+      // `httpServer.close` waits for open connections to end, and the editor's
+      // WebSocket lives on this same server, so the sockets have to be hung up
+      // first or shutting down never finishes.
+      for (const client of wss.clients) {
+        client.terminate()
+      }
       wss.close()
+
       await Promise.all(mcpServers.map((server) => server.close()))
       await stdioTransport?.close()
+
+      httpServer.closeAllConnections()
       await new Promise<void>((resolve, reject) => {
         httpServer.close((error) => (error ? reject(error) : resolve()))
       })

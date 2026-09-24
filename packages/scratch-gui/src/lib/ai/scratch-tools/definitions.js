@@ -12,13 +12,6 @@ const targetProperty = {
     description: 'Sprite name, target id, or "stage". Defaults to the sprite currently being edited.'
 };
 
-const expectedRevisionProperty = {
-    type: 'integer',
-    description: 'The revision returned by your last call. If it no longer matches, the write is ' +
-        'rejected because someone else changed the project while you were thinking. Re-read the ' +
-        'project and try again.'
-};
-
 const blockSpecDescription =
     'A block is {"opcode": "motion_movesteps", "inputs": {...}, "fields": {...}}. An input value is ' +
     'a number or string literal, an array of block specs for a C-block branch, a nested block spec ' +
@@ -116,8 +109,7 @@ const TOOL_DEFINITIONS = [
                 libraryName: {type: 'string', description: 'The sprite\'s name in the Scratch sprite library.'},
                 name: {type: 'string', description: 'Rename the sprite after adding it.'},
                 x: {type: 'number', description: 'Stage x position. Randomised when omitted, as the editor does.'},
-                y: {type: 'number', description: 'Stage y position. Randomised when omitted, as the editor does.'},
-                expectedRevision: expectedRevisionProperty
+                y: {type: 'number', description: 'Stage y position. Randomised when omitted, as the editor does.'}
             },
             required: ['libraryName'],
             additionalProperties: false
@@ -129,8 +121,7 @@ const TOOL_DEFINITIONS = [
         inputSchema: {
             type: 'object',
             properties: {
-                targetId: targetProperty,
-                expectedRevision: expectedRevisionProperty
+                targetId: targetProperty
             },
             required: ['targetId'],
             additionalProperties: false
@@ -144,8 +135,7 @@ const TOOL_DEFINITIONS = [
             type: 'object',
             properties: {
                 targetId: targetProperty,
-                name: {type: 'string', description: 'The new sprite name.'},
-                expectedRevision: expectedRevisionProperty
+                name: {type: 'string', description: 'The new sprite name.'}
             },
             required: ['targetId', 'name'],
             additionalProperties: false
@@ -163,8 +153,7 @@ const TOOL_DEFINITIONS = [
                 y: {type: 'number', description: 'Stage y position, roughly -180 to 180.'},
                 direction: {type: 'number', description: 'Heading in degrees; 90 points right.'},
                 size: {type: 'number', description: 'Size as a percentage; 100 is full size.'},
-                visible: {type: 'boolean', description: 'Whether the sprite is shown on the stage.'},
-                expectedRevision: expectedRevisionProperty
+                visible: {type: 'boolean', description: 'Whether the sprite is shown on the stage.'}
             },
             additionalProperties: false
         }
@@ -176,8 +165,7 @@ const TOOL_DEFINITIONS = [
             type: 'object',
             properties: {
                 libraryName: {type: 'string', description: 'The costume\'s name in the Scratch costume library.'},
-                targetId: targetProperty,
-                expectedRevision: expectedRevisionProperty
+                targetId: targetProperty
             },
             required: ['libraryName'],
             additionalProperties: false
@@ -189,8 +177,7 @@ const TOOL_DEFINITIONS = [
         inputSchema: {
             type: 'object',
             properties: {
-                libraryName: {type: 'string', description: 'The backdrop\'s name in the Scratch backdrop library.'},
-                expectedRevision: expectedRevisionProperty
+                libraryName: {type: 'string', description: 'The backdrop\'s name in the Scratch backdrop library.'}
             },
             required: ['libraryName'],
             additionalProperties: false
@@ -203,8 +190,7 @@ const TOOL_DEFINITIONS = [
             type: 'object',
             properties: {
                 libraryName: {type: 'string', description: 'The sound\'s name in the Scratch sound library.'},
-                targetId: targetProperty,
-                expectedRevision: expectedRevisionProperty
+                targetId: targetProperty
             },
             required: ['libraryName'],
             additionalProperties: false
@@ -234,8 +220,7 @@ const TOOL_DEFINITIONS = [
                         'so every sprite can use it, "local" puts it on one sprite. Defaults to "global", ' +
                         'which is what the editor does. Ignored if the variable already exists.'
                 },
-                targetId: targetProperty,
-                expectedRevision: expectedRevisionProperty
+                targetId: targetProperty
             },
             required: ['name', 'value'],
             additionalProperties: false
@@ -256,8 +241,7 @@ const TOOL_DEFINITIONS = [
                     items: {type: 'object'}
                 },
                 x: {type: 'number', description: 'Where to place the script in the code area. Defaults to 0.'},
-                y: {type: 'number', description: 'Where to place the script in the code area. Defaults to 0.'},
-                expectedRevision: expectedRevisionProperty
+                y: {type: 'number', description: 'Where to place the script in the code area. Defaults to 0.'}
             },
             required: ['blocks'],
             additionalProperties: false
@@ -270,8 +254,7 @@ const TOOL_DEFINITIONS = [
             type: 'object',
             properties: {
                 targetId: targetProperty,
-                topBlockId: {type: 'string', description: 'The id of the script\'s top block.'},
-                expectedRevision: expectedRevisionProperty
+                topBlockId: {type: 'string', description: 'The id of the script\'s top block.'}
             },
             required: ['topBlockId'],
             additionalProperties: false
@@ -349,21 +332,6 @@ const TOOL_DEFINITIONS = [
     }
 ];
 
-/** Tools that change the project, and so take `expectedRevision` and bump the revision. */
-const WRITE_TOOL_NAMES = [
-    'add_extension',
-    'add_backdrop_from_library',
-    'add_costume_from_library',
-    'add_sound_from_library',
-    'add_sprite_from_library',
-    'create_script',
-    'delete_script',
-    'delete_sprite',
-    'rename_sprite',
-    'set_sprite_properties',
-    'set_variable'
-];
-
 /**
  * Restate the catalogue the way an OpenAI-compatible chat API wants it.
  *
@@ -385,6 +353,5 @@ const toChatTools = definitions => definitions.map(tool => ({
 
 export {
     TOOL_DEFINITIONS,
-    toChatTools,
-    WRITE_TOOL_NAMES
+    toChatTools
 };

@@ -90,6 +90,9 @@ export async function startRendererServer(root: string, host: string): Promise<R
     origin: `http://${host}:${address.port}`,
     close: () =>
       new Promise<void>((resolve, reject) => {
+        // A keep-alive request the window never finished would otherwise hold
+        // the server open for as long as the browser felt like.
+        server.closeAllConnections()
         server.close((error) => (error ? reject(error) : resolve()))
       }),
   }

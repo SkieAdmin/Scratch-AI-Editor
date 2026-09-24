@@ -182,11 +182,12 @@ app.on('before-quit', () => {
 
   // A socket that refuses to close must not strand the user in an app that
   // will not exit, so the process leaves anyway shortly after.
-  const forceExit = setTimeout(() => {
+  // Not unref'd on purpose: an unreferenced timer need never fire, which is
+  // exactly the case where this is the only thing left to end the process.
+  setTimeout(() => {
     logger?.log('Warning', 'Shutdown took too long; exiting anyway')
     app.exit(0)
   }, SHUTDOWN_GRACE_MS)
-  forceExit.unref()
 })
 
 app.on('activate', () => {
