@@ -8,6 +8,7 @@ export interface StoredConfig {
   baseUrls?: Record<string, string>
   apiKeys?: Record<string, string>
   useBridge?: boolean
+  maxToolRounds?: number
 }
 
 /**

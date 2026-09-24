@@ -11,6 +11,7 @@ import intlShape from '../lib/intlShape.js';
 import {createId, runChatTurn} from '../lib/ai/chat-session';
 import {buildSystemPrompt} from '../lib/ai/system-prompt';
 import {BRIDGE_STATUS, DEEPSEEK_MODELS, PROVIDER_IDS} from '../lib/ai/constants';
+import {logError} from '../lib/ai/log';
 import {providerNeedsApiKey, saveConfig} from '../lib/ai/persistence';
 import {providerMessages} from '../lib/ai/provider-messages';
 import {getProvider} from '../lib/ai/providers';
@@ -26,6 +27,12 @@ import {
     updateAiMessage
 } from '../reducers/ai-assist';
 import {openAiSettingsModal} from '../reducers/modals';
+
+/**
+ * How often streamed text reaches the store, in milliseconds. Fast enough to
+ * read as live, slow enough that a long reply does not monopolise the thread.
+ */
+const STREAM_FLUSH_INTERVAL_MS = 100;
 
 const messages = defineMessages({
     bridgeOffline: {
@@ -67,6 +74,7 @@ class AiAssistPanel extends React.Component {
         this.bridge = null;
         this.abortController = null;
         this.draft = null;
+        this.flushTimer = null;
     }
 
     componentDidMount () {
@@ -83,6 +91,7 @@ class AiAssistPanel extends React.Component {
     }
 
     componentWillUnmount () {
+        if (this.flushTimer !== null) clearTimeout(this.flushTimer);
         this.closeBridge();
         if (this.abortController) this.abortController.abort();
     }
@@ -238,6 +247,7 @@ class AiAssistPanel extends React.Component {
                 }),
                 toolDefinitions: this.chatTools,
                 runTool: this.toolRunner.runTool,
+                maxRounds: this.props.config.maxToolRounds,
                 signal: this.abortController.signal,
                 onMessageStart: id => {
                     this.draft = null;
@@ -248,6 +258,7 @@ class AiAssistPanel extends React.Component {
                 onToolCallStart: (id, call) => this.patchToolCall(id, {...call, status: 'running'}),
                 onToolCallEnd: (id, call) => this.patchToolCall(id, call),
                 onMessageEnd: (id, completion) => {
+                    this.flushDraft(id);
                     // A model can answer without streaming, in which case the
                     // bubble has not been created yet but there is text to show.
                     if (!this.draft && completion && completion.content) {
@@ -258,7 +269,10 @@ class AiAssistPanel extends React.Component {
                 }
             });
         } catch (e) {
-            if (e.name !== 'AbortError') this.props.onSetError(e.message);
+            if (e.name !== 'AbortError') {
+                logError(`Chat turn failed: ${e.message}`);
+                this.props.onSetError(e.message);
+            }
             this.props.onEndStream();
         } finally {
             this.abortController = null;
@@ -293,17 +307,60 @@ class AiAssistPanel extends React.Component {
      * @param {string} field either `content` or `reasoning`
      * @param {string} delta the fragment to append
      */
+    /**
+     * Accumulate a streamed fragment and show it soon, but not immediately.
+     *
+     * A reasoning model emits thousands of fragments. Dispatching each one
+     * re-rendered the whole transcript against an ever-longer string, which is
+     * quadratic work: the main thread ended up so busy that it could not answer
+     * the bridge's heartbeat, and the bridge dropped a connection that was in
+     * fact fine. Coalescing the fragments keeps the text live without pinning
+     * the thread.
+     * @param {string} id the message being streamed
+     * @param {string} field either `content` or `reasoning`
+     * @param {string} delta the fragment to append
+     */
     appendTo (id, field, delta) {
         if (!this.draft) {
             this.startDraft(id, {[field]: delta});
             return;
         }
         this.draft[field] += delta;
-        this.props.onUpdateMessage(id, {[field]: this.draft[field]});
+        this.scheduleFlush(id);
+    }
+
+    /**
+     * Push the accumulated text to the store on the next tick, at most once per
+     * interval.
+     * @param {string} id the message being streamed
+     */
+    scheduleFlush (id) {
+        if (this.flushTimer !== null) return;
+        this.flushTimer = setTimeout(() => {
+            this.flushTimer = null;
+            this.flushDraft(id);
+        }, STREAM_FLUSH_INTERVAL_MS);
+    }
+
+    /**
+     * Show everything accumulated so far.
+     * @param {string} id the message being streamed
+     */
+    flushDraft (id) {
+        if (this.flushTimer !== null) {
+            clearTimeout(this.flushTimer);
+            this.flushTimer = null;
+        }
+        if (!this.draft) return;
+        this.props.onUpdateMessage(id, {
+            content: this.draft.content,
+            reasoning: this.draft.reasoning
+        });
     }
 
     patchToolCall (id, call) {
         if (!this.draft) this.startDraft(id, {});
+        this.flushDraft(id);
 
         const existing = this.draft.toolCalls;
         const index = existing.findIndex(candidate => candidate.id === call.id);
@@ -352,6 +409,7 @@ AiAssistPanel.propTypes = {
         apiKeys: PropTypes.object,
         baseUrls: PropTypes.object,
         bridgeUrl: PropTypes.string,
+        maxToolRounds: PropTypes.number,
         modelId: PropTypes.string,
         providerId: PropTypes.string,
         useBridge: PropTypes.bool

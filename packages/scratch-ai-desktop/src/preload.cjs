@@ -16,4 +16,8 @@ contextBridge.exposeInMainWorld('scratchAiDesktop', {
   // to be available before the first render rather than a tick later.
   readConfig: () => ipcRenderer.sendSync('scratch-ai:read-config'),
   writeConfig: (config) => ipcRenderer.invoke('scratch-ai:write-config', config),
+
+  // Problems the editor notices belong in the same file as the ones the shell
+  // notices, so the user has one place to look.
+  log: (level, message) => ipcRenderer.send('scratch-ai:log', level, message),
 })

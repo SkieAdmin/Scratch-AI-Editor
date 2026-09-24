@@ -16,6 +16,7 @@ const fakeVm = {};
 
 const ADD_MESSAGE = 'scratch-gui/ai-assist/ADD_MESSAGE';
 const SET_ERROR = 'scratch-gui/ai-assist/SET_ERROR';
+const UPDATE_MESSAGE = 'scratch-gui/ai-assist/UPDATE_MESSAGE';
 
 const PROVIDER_ERROR =
     'Unknown AI provider "undefined". Known providers: deepseek, openrouter, lmstudio, ollama.';
@@ -193,5 +194,90 @@ describe('AiAssistPanel talking to the bridge', () => {
         await flushMicrotasks();
 
         expect(lastSocket().sentOfType('chat-cancel')).toEqual([{type: 'chat-cancel', id}]);
+    });
+});
+
+describe('AiAssistPanel streaming a long reply', () => {
+    let restoreWebSocket;
+
+    beforeEach(() => {
+        restoreWebSocket = installFakeSocket();
+        jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+        jest.useRealTimers();
+        restoreWebSocket();
+        setActiveBridge(null);
+    });
+
+    const buildStore = () => configureStore()({
+        locales: {isRtl: false},
+        scratchGui: {
+            aiAssist: {
+                ...aiAssistInitialState,
+                visible: true,
+                bridgeStatus: BRIDGE_STATUS.CONNECTED,
+                config: {
+                    ...aiAssistInitialState.config,
+                    providerId: PROVIDER_IDS.DEEPSEEK,
+                    modelId: 'deepseek-reasoner',
+                    useBridge: true
+                }
+            },
+            targets: {sprites: {}}
+        }
+    });
+
+    /*
+     * A reasoning model emits thousands of fragments. Dispatching each one
+     * re-rendered the whole transcript against a longer and longer string, and
+     * the main thread became too busy to answer the bridge's heartbeat, so the
+     * bridge closed a healthy connection.
+     */
+    test('coalesces many fragments into few store updates', async () => {
+        const store = buildStore();
+        const rendered = renderWithIntl(
+            <Provider store={store}>
+                <AiAssistPanel vm={fakeVm} />
+            </Provider>
+        );
+        lastSocket().open();
+
+        fireEvent.change(rendered.container.querySelector('textarea'), {target: {value: 'think hard'}});
+        fireEvent.click(rendered.getByLabelText('Send'));
+        await flushMicrotasks();
+
+        const {id} = lastSocket().sentOfType('chat')[0];
+        for (let i = 0; i < 500; i++) {
+            lastSocket().receive({type: 'chat-delta', id, delta: {reasoning: `token ${i} `}});
+        }
+        await flushMicrotasks();
+
+        const updates = store.getActions().filter(action => action.type === UPDATE_MESSAGE);
+        expect(updates.length).toBeLessThan(20);
+    });
+
+    test('shows everything once the reply finishes', async () => {
+        const store = buildStore();
+        const rendered = renderWithIntl(
+            <Provider store={store}>
+                <AiAssistPanel vm={fakeVm} />
+            </Provider>
+        );
+        lastSocket().open();
+
+        fireEvent.change(rendered.container.querySelector('textarea'), {target: {value: 'hi'}});
+        fireEvent.click(rendered.getByLabelText('Send'));
+        await flushMicrotasks();
+
+        const {id} = lastSocket().sentOfType('chat')[0];
+        lastSocket().receive({type: 'chat-delta', id, delta: {content: 'Hel'}});
+        lastSocket().receive({type: 'chat-delta', id, delta: {content: 'lo!'}});
+        lastSocket().receive({type: 'chat-done', id, ok: true, result: {content: 'Hello!', toolCalls: []}});
+        await flushMicrotasks();
+
+        const updates = store.getActions().filter(action => action.type === UPDATE_MESSAGE);
+        expect(updates[updates.length - 1].patch.content).toBe('Hello!');
     });
 });

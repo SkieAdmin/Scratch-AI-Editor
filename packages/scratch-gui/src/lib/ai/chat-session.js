@@ -1,4 +1,4 @@
-const MAX_TOOL_ROUNDS = 12;
+import {DEFAULT_MAX_TOOL_ROUNDS} from './constants';
 
 const createId = () => `${Date.now().toString(36)}-${Math.random().toString(36)
     .slice(2, 8)}`;
@@ -16,6 +16,7 @@ const createId = () => `${Date.now().toString(36)}-${Math.random().toString(36)
  * @param options.systemPrompt
  * @param options.toolDefinitions
  * @param options.runTool
+ * @param options.maxRounds
  * @param options.signal
  * @param options.onMessageStart
  * @param options.onContentDelta
@@ -32,6 +33,7 @@ const runChatTurn = async ({
     systemPrompt,
     toolDefinitions,
     runTool,
+    maxRounds = DEFAULT_MAX_TOOL_ROUNDS,
     signal,
     onMessageStart,
     onContentDelta,
@@ -44,7 +46,7 @@ const runChatTurn = async ({
         history.map(message => ({role: message.role, content: message.content}))
     );
 
-    for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    for (let round = 0; round < maxRounds; round++) {
         const messageId = createId();
         onMessageStart(messageId);
 
@@ -112,7 +114,8 @@ const runChatTurn = async ({
     }
 
     throw new Error(
-        `The assistant used ${MAX_TOOL_ROUNDS} rounds of tools without finishing. Try a smaller request.`
+        `The assistant worked through ${maxRounds} rounds of tools without finishing. What it built so ` +
+        'far is kept. Ask it to carry on, or raise the limit in Settings.'
     );
 };
 

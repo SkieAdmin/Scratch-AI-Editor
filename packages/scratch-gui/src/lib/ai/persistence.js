@@ -3,12 +3,17 @@ import {getDesktopBridgeUrl, getDesktopConfigStore} from './desktop';
 import {
     DEFAULT_BASE_URLS,
     DEFAULT_BRIDGE_URL,
+    DEFAULT_MAX_TOOL_ROUNDS,
+    MAX_TOOL_ROUNDS,
+    MIN_TOOL_ROUNDS,
     PROVIDER_IDS,
     REMOTE_PROVIDER_IDS
 } from './constants';
 
 const STORAGE_KEY = 'scratch-gui:ai-assist';
 const CONFIG_ID = 'config';
+
+const clampRounds = rounds => Math.min(MAX_TOOL_ROUNDS, Math.max(MIN_TOOL_ROUNDS, Math.round(rounds)));
 
 const isKnownProvider = providerId => Object.values(PROVIDER_IDS).includes(providerId);
 
@@ -21,6 +26,7 @@ const defaultConfig = () => {
         baseUrls: {...DEFAULT_BASE_URLS},
         bridgeUrl: desktopBridgeUrl ?? DEFAULT_BRIDGE_URL,
         useBridge: desktopBridgeUrl !== null,
+        maxToolRounds: DEFAULT_MAX_TOOL_ROUNDS,
         apiKeys: {}
     };
 };
@@ -73,6 +79,7 @@ const loadConfig = () => {
         baseUrls: {...defaults.baseUrls, ...(stored.baseUrls || {})},
         bridgeUrl: desktopBridgeUrl ?? (typeof stored.bridgeUrl === 'string' ? stored.bridgeUrl : defaults.bridgeUrl),
         useBridge: desktopBridgeUrl === null ? Boolean(stored.useBridge) : true,
+        maxToolRounds: clampRounds(Number(stored.maxToolRounds) || DEFAULT_MAX_TOOL_ROUNDS),
         apiKeys: readApiKeys(stored.apiKeys)
     };
 };
@@ -91,6 +98,7 @@ const saveConfig = config => {
         modelId: config.modelId,
         baseUrls: config.baseUrls,
         useBridge: config.useBridge,
+        maxToolRounds: config.maxToolRounds,
         apiKeys: config.apiKeys
     };
 
@@ -113,6 +121,7 @@ const saveConfig = config => {
 const providerNeedsApiKey = providerId => REMOTE_PROVIDER_IDS.includes(providerId);
 
 export {
+    clampRounds,
     defaultConfig,
     loadConfig,
     providerNeedsApiKey,

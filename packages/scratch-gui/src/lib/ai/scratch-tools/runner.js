@@ -59,7 +59,16 @@ const VARIABLE_FIELD_TYPES = {
 
 const WRITE_TOOLS = new Set(WRITE_TOOL_NAMES);
 
+/**
+ * Extensions the assistant can load. Their blocks only exist once loaded, which
+ * is why an opcode from one is unknown until then.
+ */
+const LOADABLE_EXTENSIONS = ['text2speech', 'music', 'pen', 'translate'];
+
 const MAX_SUGGESTIONS = 5;
+
+/** How many library names one search returns, to keep the reply small. */
+const LIBRARY_PAGE_SIZE = 60;
 
 const suggestNames = (library, wanted) => {
     const needle = String(wanted).toLowerCase();
@@ -197,6 +206,36 @@ const createToolRunner = (vm, options = {}) => {
         Object.prototype.hasOwnProperty.call(SHADOW_FIELDS, opcode) ||
         opcode.endsWith('_menu');
 
+    /**
+     * Load the extension an opcode belongs to, if it names one.
+     *
+     * Extension blocks do not exist in the runtime until the extension is
+     * loaded, so a script that speaks would otherwise be rejected for using an
+     * opcode the project "does not know".
+     * @param {string} opcode the opcode about to be used
+     * @returns {Promise<void>} resolves once the extension is available
+     */
+    const ensureExtensionFor = async opcode => {
+        const [prefix] = String(opcode).split('_');
+        if (!LOADABLE_EXTENSIONS.includes(prefix)) return;
+        if (vm.extensionManager.isExtensionLoaded(prefix)) return;
+
+        await vm.extensionManager.loadExtensionURL(prefix);
+    };
+
+    /**
+     * Every opcode a script spec mentions, nested inputs included.
+     * @param {Array<object>} specs the block specs to walk
+     * @returns {Array<string>} the opcodes found
+     */
+    const collectOpcodes = specs => specs.flatMap(spec => {
+        if (!spec || typeof spec !== 'object') return [];
+        const nested = Object.values(spec.inputs || {}).flatMap(
+            value => (Array.isArray(value) ? collectOpcodes(value) : collectOpcodes([value]))
+        );
+        return (typeof spec.opcode === 'string' ? [spec.opcode] : []).concat(nested);
+    });
+
     const assertKnownOpcode = opcode => {
         if (typeof opcode !== 'string') {
             throw new Error(`Every block spec needs an "opcode" string, got ${JSON.stringify(opcode)}.`);
@@ -221,15 +260,25 @@ const createToolRunner = (vm, options = {}) => {
 
         const name = String(rawValue);
         const found = findVariable(target, name, variableType);
-        if (!found) {
-            const kind = fieldName === 'BROADCAST_OPTION' ? 'broadcast message' :
-                (fieldName === 'LIST' ? 'list' : 'variable');
-            throw new Error(
-                `${target.getName()} has no ${kind} named "${name}". Create it with set_variable ` +
-                'before referring to it from a script.'
-            );
+        if (found) {
+            return {name: fieldName, id: found.variable.id, value: found.variable.name, variableType};
         }
-        return {name: fieldName, id: found.variable.id, value: found.variable.name, variableType};
+
+        if (variableType === BROADCAST_VARIABLE_TYPE) {
+            // Naming a new message in a broadcast block is how the editor itself
+            // creates one, and `set_variable` cannot make broadcasts, so asking
+            // for one that does not exist yet has to create it here.
+            const stage = vm.runtime.getTargetForStage();
+            const id = uid();
+            stage.createVariable(id, name, BROADCAST_VARIABLE_TYPE);
+            return {name: fieldName, id, value: name, variableType};
+        }
+
+        const kind = fieldName === 'LIST' ? 'list' : 'variable';
+        throw new Error(
+            `${target.getName()} has no ${kind} named "${name}". Create it with set_variable ` +
+            'before referring to it from a script.'
+        );
     };
 
     const buildShadow = (inputName, value, parentId, records) => {
@@ -351,6 +400,32 @@ const createToolRunner = (vm, options = {}) => {
         get_project_summary: () => summarizeProject(vm),
 
         get_target: args => summarizeTarget(resolveTarget(args.targetId)),
+
+        search_library: args => {
+            const libraries = {
+                sprite: spriteLibraryContent,
+                costume: costumeLibraryContent,
+                backdrop: backdropLibraryContent,
+                sound: soundLibraryContent
+            };
+            const library = libraries[args.kind];
+            if (!library) {
+                throw new Error(
+                    `"${args.kind}" is not a library. Choose one of: ${Object.keys(libraries).join(', ')}.`
+                );
+            }
+
+            const names = library.map(entry => entry.name);
+            const query = typeof args.query === 'string' ? args.query.trim().toLowerCase() : '';
+            const matches = query === '' ? names : names.filter(name => name.toLowerCase().includes(query));
+
+            return {
+                kind: args.kind,
+                total: names.length,
+                matches: matches.slice(0, LIBRARY_PAGE_SIZE),
+                truncated: matches.length > LIBRARY_PAGE_SIZE
+            };
+        },
 
         list_sprites: () => ({
             editingTargetId: vm.editingTarget ? vm.editingTarget.id : null,
@@ -577,11 +652,15 @@ const createToolRunner = (vm, options = {}) => {
             return {id: variableId, name: args.name, kind, created, ownerId: owner.id};
         },
 
-        create_script: args => {
+        create_script: async args => {
             const target = resolveTarget(args.targetId);
             if (!Array.isArray(args.blocks) || args.blocks.length === 0) {
                 throw new Error('"blocks" must be a non-empty array of block specs, top block first.');
             }
+
+            // Any extension this script needs has to be loaded before its
+            // opcodes can be recognised.
+            await Promise.all(collectOpcodes(args.blocks).map(ensureExtensionFor));
 
             const records = [];
             let previous = null;
@@ -620,6 +699,19 @@ const createToolRunner = (vm, options = {}) => {
             publishBlockChange(target);
 
             return {targetId: target.id, deletedTopBlockId: args.topBlockId};
+        },
+
+        add_extension: async args => {
+            if (!LOADABLE_EXTENSIONS.includes(args.extensionId)) {
+                throw new Error(
+                    `"${args.extensionId}" is not an extension this editor can add. ` +
+                    `Choose one of: ${LOADABLE_EXTENSIONS.join(', ')}.`
+                );
+            }
+            if (!vm.extensionManager.isExtensionLoaded(args.extensionId)) {
+                await vm.extensionManager.loadExtensionURL(args.extensionId);
+            }
+            return {extensionId: args.extensionId, loaded: true};
         },
 
         green_flag: () => {

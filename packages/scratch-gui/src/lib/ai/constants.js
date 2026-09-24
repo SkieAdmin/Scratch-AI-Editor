@@ -49,6 +49,18 @@ const BRIDGE_STATUS = {
 };
 
 /**
+ * How many times the assistant may call tools and look at the results before it
+ * has to answer. Building a whole story means searching the library, adding
+ * sprites and writing a script for each of them, so this is deliberately
+ * generous; it exists to stop a runaway loop, not to budget normal work.
+ */
+const DEFAULT_MAX_TOOL_ROUNDS = 40;
+
+/** The range the settings screen accepts. */
+const MIN_TOOL_ROUNDS = 5;
+const MAX_TOOL_ROUNDS = 100;
+
+/**
  * How wide the assistant panel is, in pixels. Keep in sync with
  * `$ai-assist-panel-width` in css/units.css.
  */
@@ -56,6 +68,9 @@ const PANEL_WIDTH = 380;
 
 export {
     BRIDGE_STATUS,
+    DEFAULT_MAX_TOOL_ROUNDS,
+    MAX_TOOL_ROUNDS,
+    MIN_TOOL_ROUNDS,
     DEEPSEEK_MODELS,
     DEFAULT_BASE_URLS,
     DEFAULT_BRIDGE_URL,

@@ -7,7 +7,13 @@ import Box from '../box/box.jsx';
 import Button from '../button/button.jsx';
 import Modal from '../modal/modal.jsx';
 import intlShape from '../../lib/intlShape.js';
-import {BRIDGE_STATUS, DEFAULT_BASE_URLS, PROVIDER_IDS} from '../../lib/ai/constants';
+import {
+    BRIDGE_STATUS,
+    DEFAULT_BASE_URLS,
+    MAX_TOOL_ROUNDS,
+    MIN_TOOL_ROUNDS,
+    PROVIDER_IDS
+} from '../../lib/ai/constants';
 import {providerMessages} from '../../lib/ai/provider-messages';
 import {providerNeedsApiKey} from '../../lib/ai/persistence';
 
@@ -191,6 +197,23 @@ const messages = defineMessages({
         description: 'Warning shown when the chosen provider requires an API key and none is set',
         id: 'gui.aiAssist.settings.apiKeyMissingWarning'
     },
+    effortHeading: {
+        defaultMessage: 'How long it may work',
+        description: 'Heading of the section limiting how many tool rounds the assistant may take',
+        id: 'gui.aiAssist.settings.effortHeading'
+    },
+    maxRoundsLabel: {
+        defaultMessage: 'Steps before it has to stop',
+        description: 'Label of the field limiting how many rounds of tools the assistant may use',
+        id: 'gui.aiAssist.settings.maxRoundsLabel'
+    },
+    maxRoundsHint: {
+        defaultMessage: 'A whole story takes many steps: finding sprites, adding them, then writing a ' +
+            'script for each one. Raise this if it keeps stopping before it finishes. Lower it to keep ' +
+            'a request short. Between {min} and {max}.',
+        description: 'Explanation of the limit on how many rounds of tools the assistant may use',
+        id: 'gui.aiAssist.settings.maxRoundsHint'
+    },
     doneButton: {
         defaultMessage: 'Done',
         description: 'Text of the button that closes the AI assistant settings modal',
@@ -261,6 +284,11 @@ const AiSettingsModal = props => {
         [config.apiKeys, config.providerId, onChangeConfig]
     );
     const handleToggleKeyVisible = useCallback(() => setKeyVisible(visible => !visible), []);
+
+    const handleMaxRoundsChange = useCallback(
+        event => onChangeConfig({maxToolRounds: Number(event.target.value)}),
+        [onChangeConfig]
+    );
 
     const handleBridgeUrlChange = useCallback(
         event => onChangeConfig({bridgeUrl: event.target.value}),
@@ -510,6 +538,34 @@ const AiSettingsModal = props => {
                     </div>
                 ) : null}
 
+                <div className={styles.section}>
+                    <h2 className={styles.heading}>
+                        <FormattedMessage {...messages.effortHeading} />
+                    </h2>
+                    <label
+                        className={styles.fieldLabel}
+                        htmlFor="ai-settings-max-rounds"
+                    >
+                        <FormattedMessage {...messages.maxRoundsLabel} />
+                    </label>
+                    <input
+                        className={styles.textInput}
+                        id="ai-settings-max-rounds"
+                        max={MAX_TOOL_ROUNDS}
+                        min={MIN_TOOL_ROUNDS}
+                        step={1}
+                        type="number"
+                        value={config.maxToolRounds}
+                        onChange={handleMaxRoundsChange}
+                    />
+                    <p className={styles.hint}>
+                        <FormattedMessage
+                            {...messages.maxRoundsHint}
+                            values={{max: MAX_TOOL_ROUNDS, min: MIN_TOOL_ROUNDS}}
+                        />
+                    </p>
+                </div>
+
                 <Box className={styles.footer}>
                     <Button
                         className={styles.doneButton}
@@ -531,6 +587,7 @@ AiSettingsModal.propTypes = {
         bridgeUrl: PropTypes.string.isRequired,
         modelId: PropTypes.string.isRequired,
         providerId: PropTypes.oneOf(Object.values(PROVIDER_IDS)).isRequired,
+        maxToolRounds: PropTypes.number.isRequired,
         useBridge: PropTypes.bool.isRequired
     }).isRequired,
     connectionError: PropTypes.string,

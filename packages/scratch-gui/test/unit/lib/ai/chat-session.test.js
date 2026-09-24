@@ -10,6 +10,7 @@ const baseOptions = overrides => ({
     systemPrompt: 'be helpful',
     toolDefinitions: [],
     runTool: jest.fn(),
+    maxRounds: 12,
     onMessageStart: noop,
     onContentDelta: noop,
     onReasoningDelta: noop,
@@ -138,6 +139,38 @@ describe('runChatTurn', () => {
             status: 'done',
             durationMs: expect.any(Number)
         }));
+    });
+
+    test('works for as many rounds as it was given', async () => {
+        const transport = {
+            chat: jest.fn().mockResolvedValue({
+                content: '',
+                toolCalls: [{id: 'c', name: 'green_flag', args: {}, rawArguments: '{}'}]
+            })
+        };
+
+        await expect(runChatTurn(baseOptions({
+            transport,
+            maxRounds: 30,
+            runTool: jest.fn().mockResolvedValue({ok: true})
+        }))).rejects.toThrow(/30 rounds/);
+
+        expect(transport.chat).toHaveBeenCalledTimes(30);
+    });
+
+    test('says the work so far is kept when it runs out of rounds', async () => {
+        const transport = {
+            chat: jest.fn().mockResolvedValue({
+                content: '',
+                toolCalls: [{id: 'c', name: 'green_flag', args: {}, rawArguments: '{}'}]
+            })
+        };
+
+        await expect(runChatTurn(baseOptions({
+            transport,
+            maxRounds: 5,
+            runTool: jest.fn().mockResolvedValue({ok: true})
+        }))).rejects.toThrow(/built so far is kept/);
     });
 
     test('gives up rather than looping forever on tools', async () => {

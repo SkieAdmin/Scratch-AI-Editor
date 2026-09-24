@@ -278,6 +278,47 @@ const TOOL_DEFINITIONS = [
         }
     },
     {
+        name: 'search_library',
+        description: 'List or search the names in a Scratch asset library. Library names are exact and ' +
+            'case-sensitive, and the library is smaller than you expect, so search here before calling ' +
+            'add_sprite_from_library or the other add_*_from_library tools instead of guessing a name.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                kind: {
+                    type: 'string',
+                    enum: ['sprite', 'costume', 'backdrop', 'sound'],
+                    description: 'Which library to look in.'
+                },
+                query: {
+                    type: 'string',
+                    description: 'Part of a name to match, case-insensitive. Omit to list from the start.'
+                }
+            },
+            required: ['kind'],
+            additionalProperties: false
+        }
+    },
+    {
+        name: 'add_extension',
+        description: 'Switch on one of the Scratch extensions so its blocks become available. ' +
+            'Use "text2speech" to give characters a speaking voice: it adds the "speak" block, ' +
+            'which says words out loud while the project runs. create_script loads an extension ' +
+            'by itself when a script uses one of its blocks, so call this only to check first.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                extensionId: {
+                    type: 'string',
+                    enum: ['text2speech', 'music', 'pen', 'translate'],
+                    description: 'Which extension to switch on.'
+                }
+            },
+            required: ['extensionId'],
+            additionalProperties: false
+        }
+    },
+    {
         name: 'green_flag',
         description: 'Start the project, as if the green flag had been clicked.',
         inputSchema: {
@@ -310,6 +351,7 @@ const TOOL_DEFINITIONS = [
 
 /** Tools that change the project, and so take `expectedRevision` and bump the revision. */
 const WRITE_TOOL_NAMES = [
+    'add_extension',
     'add_backdrop_from_library',
     'add_costume_from_library',
     'add_sound_from_library',

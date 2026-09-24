@@ -77,7 +77,6 @@ packages/
 ├── scratch-paint/          Paint editor for costumes and backdrops
 ├── scratch-storage/        Asset loading and caching
 ├── scratch-ai-bridge/      Local MCP server and AI provider proxy for the editor
-├── scratch-ai-desktop/     Skie AI Editor desktop shell and executable packaging
 ├── scratch-ai-desktop/     Electron shell that runs the editor and the bridge as one app
 ├── task-herder/            Async task scheduler with rate limiting
 └── scratch-media-lib-scripts/  Build scripts for media library assets
@@ -95,8 +94,7 @@ scripts/                    Monorepo-level utility scripts
 | `scratch-paint` | JavaScript / JSX | webpack | Jest |
 | `scratch-storage` | TypeScript | webpack | Jest |
 | `scratch-ai-bridge` | TypeScript | Vite | Vitest |
-| `scratch-ai-desktop` | TypeScript | tsc + electron-builder | — |
-| `scratch-ai-desktop` | TypeScript | tsc + electron-builder | ESLint + Prettier |
+| `scratch-ai-desktop` | TypeScript | tsc + electron-builder | Vitest |
 | `task-herder` | TypeScript | Vite | Vitest |
 | `scratch-media-lib-scripts` | JavaScript | — | Jest |
 

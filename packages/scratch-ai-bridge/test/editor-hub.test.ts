@@ -221,14 +221,16 @@ describe('EditorHub timeouts and heartbeat', () => {
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('most likely timed out'))
   })
 
-  it('pings the editor and drops the socket after two unanswered beats', () => {
+  it('pings the editor and drops the socket after four unanswered beats', () => {
     const hub = new EditorHub({ heartbeatIntervalMs: 1000 })
     const socket = new FakeSocket()
     hub.attach(socket)
 
-    vi.advanceTimersByTime(1000)
-    vi.advanceTimersByTime(1000)
-    expect(socket.sentOfType('ping')).toHaveLength(2)
+    // A busy editor gets a minute of silence before it counts as gone.
+    for (let beat = 0; beat < 4; beat++) {
+      vi.advanceTimersByTime(1000)
+    }
+    expect(socket.sentOfType('ping')).toHaveLength(4)
     expect(socket.closes).toEqual([])
 
     vi.advanceTimersByTime(1000)

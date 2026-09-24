@@ -8,7 +8,7 @@ jest.mock('../../../../../src/lib/make-toolbox-xml', () => ({
 }));
 
 const HAT_OPCODES = ['event_whenflagclicked'];
-const PRIMITIVE_OPCODES = ['motion_movesteps', 'motion_turnright', 'looks_say', 'data_setvariableto'];
+const PRIMITIVE_OPCODES = ['motion_movesteps', 'motion_turnright', 'looks_say', 'data_setvariableto', 'event_broadcast'];
 
 const makeBlocks = (records = {}) => {
     const blocks = {...records};
@@ -54,6 +54,23 @@ const makeTarget = config => {
     };
     target.name = config.name;
     return target;
+};
+
+/**
+ * A stand-in for the VM's extension manager. Loading an extension is what makes
+ * its opcodes real, so the fake registers one when asked.
+ * @returns {object} the fake manager
+ */
+const extensionManager = () => {
+    const loaded = new Set();
+    return {
+        isExtensionLoaded: id => loaded.has(id),
+        loadExtensionURL: jest.fn(id => {
+            loaded.add(id);
+            PRIMITIVE_OPCODES.push(`${id}_speakAndWait`);
+            return Promise.resolve();
+        })
+    };
 };
 
 const makeVm = () => {
@@ -123,6 +140,7 @@ const makeVm = () => {
             getBlocksXML: () => [],
             emitProjectChanged: jest.fn()
         },
+        extensionManager: extensionManager(),
         emitTargetsUpdate: jest.fn(),
         refreshWorkspace: jest.fn(),
         postSpriteInfo: jest.fn(info => sprite.postSpriteInfo(info)),
@@ -387,5 +405,106 @@ describe('set_variable', () => {
 
         await expect(runner.runTool('set_variable', {name: 'inventory', kind: 'list', value: 'sword'}))
             .rejects.toThrow(/must be an array/);
+    });
+});
+
+describe('extensions and broadcasts', () => {
+    /*
+     * `set_variable` cannot make a broadcast, so telling the model to create one
+     * that way left it retrying the same rejected script until it ran out of
+     * rounds. Naming a message is how the editor creates one.
+     */
+    test('naming a new broadcast message creates it instead of failing', async () => {
+        const {vm, stage} = makeVm();
+        const {runTool} = createToolRunner(vm);
+
+        await runTool('create_script', {
+            targetId: 'Cat',
+            blocks: [
+                {opcode: 'event_whenflagclicked'},
+                {opcode: 'event_broadcast', inputs: {}, fields: {BROADCAST_OPTION: 'tell her'}}
+            ]
+        });
+
+        expect(stage.createVariable).toHaveBeenCalledWith(expect.any(String), 'tell her', 'broadcast_msg');
+        // The editing target's workspace has to be told, or the new block is invisible.
+        expect(vm.refreshWorkspace).toHaveBeenCalled();
+    });
+
+    test('a script that speaks loads the text2speech extension first', async () => {
+        const {vm} = makeVm();
+        const {runTool} = createToolRunner(vm);
+
+        await runTool('create_script', {
+            targetId: 'Cat',
+            blocks: [
+                {opcode: 'event_whenflagclicked'},
+                {opcode: 'text2speech_speakAndWait', inputs: {WORDS: 'hello'}}
+            ]
+        });
+
+        expect(vm.extensionManager.loadExtensionURL).toHaveBeenCalledWith('text2speech');
+    });
+
+    test('add_extension switches one on by name', async () => {
+        const {vm} = makeVm();
+        const {runTool} = createToolRunner(vm);
+
+        const result = await runTool('add_extension', {extensionId: 'text2speech'});
+
+        expect(result).toMatchObject({extensionId: 'text2speech', loaded: true});
+        expect(vm.extensionManager.loadExtensionURL).toHaveBeenCalledWith('text2speech');
+    });
+
+    test('add_extension refuses one this editor does not carry', async () => {
+        const {vm} = makeVm();
+        const {runTool} = createToolRunner(vm);
+
+        await expect(runTool('add_extension', {extensionId: 'not-an-extension'}))
+            .rejects.toThrow(/not an extension this editor can add/);
+    });
+});
+
+describe('search_library', () => {
+    /*
+     * Guessing at names cost whole turns: the model asked for "Crow", "Bush",
+     * "Leaves" and "Sunflower" in a row, none of which exist, and each rejection
+     * burned a round.
+     */
+    test('lists names the library really has', async () => {
+        const {vm} = makeVm();
+        const {runTool} = createToolRunner(vm);
+
+        const result = await runTool('search_library', {kind: 'sprite'});
+
+        expect(result.total).toBeGreaterThan(0);
+        expect(result.matches.length).toBeGreaterThan(0);
+        result.matches.forEach(name => expect(typeof name).toBe('string'));
+    });
+
+    test('narrows to a search term, case-insensitively', async () => {
+        const {vm} = makeVm();
+        const {runTool} = createToolRunner(vm);
+
+        const result = await runTool('search_library', {kind: 'sprite', query: 'cat'});
+
+        expect(result.matches.length).toBeGreaterThan(0);
+        result.matches.forEach(name => expect(name.toLowerCase()).toContain('cat'));
+    });
+
+    test('says so when a search matches nothing, rather than inventing one', async () => {
+        const {vm} = makeVm();
+        const {runTool} = createToolRunner(vm);
+
+        const result = await runTool('search_library', {kind: 'sprite', query: 'definitely-not-a-sprite'});
+
+        expect(result.matches).toEqual([]);
+    });
+
+    test('rejects a library that does not exist', async () => {
+        const {vm} = makeVm();
+        const {runTool} = createToolRunner(vm);
+
+        await expect(runTool('search_library', {kind: 'wallpaper'})).rejects.toThrow(/is not a library/);
     });
 });

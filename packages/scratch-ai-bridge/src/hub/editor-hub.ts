@@ -10,7 +10,13 @@ const DEFAULT_INVOKE_TIMEOUT_MS = 30_000
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 15_000
 
 /** Pings that may go unanswered before the socket is considered dead. */
-const MAX_MISSED_HEARTBEATS = 2
+/*
+ * Four missed beats is a minute of silence. The editor answers pings on its main
+ * thread, which a long tool run or a heavy project redraw can occupy for a
+ * while, and dropping a working connection is far worse than noticing a dead one
+ * late.
+ */
+const MAX_MISSED_HEARTBEATS = 4
 
 /** Message used wherever a tool call arrives with no editor to run it. */
 export const EDITOR_NOT_CONNECTED = 'The Scratch editor is not connected to this bridge.'

@@ -254,8 +254,15 @@ MessageBubble.defaultProps = {
     isStreaming: false
 };
 
+/*
+ * Only the message still being streamed changes while a reply arrives, so the
+ * ones above it are held still. Without this, every flush re-rendered the whole
+ * transcript, and a long conversation got slower with each message added.
+ */
+const MemoizedMessageBubble = React.memo(MessageBubble);
+
 export {
-    MessageBubble as default,
+    MemoizedMessageBubble as default,
     MESSAGE_ROLES,
     messageShape
 };

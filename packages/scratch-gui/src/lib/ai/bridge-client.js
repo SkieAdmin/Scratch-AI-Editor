@@ -1,4 +1,5 @@
 import {BRIDGE_STATUS} from './constants';
+import {logInformation, logWarning} from './log';
 
 const PROTOCOL_VERSION = 1;
 const RECONNECT_BASE_DELAY_MS = 1000;
@@ -163,6 +164,7 @@ class BridgeClient {
 
         socket.addEventListener('open', () => {
             this.reconnectAttempts = 0;
+            logInformation('Bridge connected');
             this._setStatus(BRIDGE_STATUS.CONNECTED);
             this._sendHello();
         });
@@ -171,6 +173,7 @@ class BridgeClient {
 
         socket.addEventListener('close', event => {
             this._rejectPending(new Error('The bridge connection closed.'));
+            logWarning(`Bridge connection closed${event.reason ? `: ${event.reason}` : ''}`);
             if (this.shouldReconnect) {
                 this._setStatus(BRIDGE_STATUS.DISCONNECTED, event.reason);
                 this._scheduleReconnect();
@@ -196,6 +199,7 @@ class BridgeClient {
             RECONNECT_BASE_DELAY_MS * Math.pow(2, this.reconnectAttempts)
         );
         this.reconnectAttempts++;
+        logInformation(`Reconnecting to the bridge in ${Math.round(delay / 1000)}s`);
         this.reconnectTimer = setTimeout(() => this._openSocket(), delay);
     }
 

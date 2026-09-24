@@ -1,14 +1,18 @@
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { startBridge, type RunningBridge } from '@skieadmin/scratch-ai-bridge'
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
 import { configPath, readConfig, writeConfig, type StoredConfig } from './config-store.ts'
+import { createLogger, type LogLevel, type Logger } from './logger.ts'
 import { startRendererServer, type RendererServer } from './renderer-server.ts'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 
 /** Everything stays on loopback; nothing this app runs should be reachable from the network. */
 const LOOPBACK = '127.0.0.1'
+
+/** How long a clean shutdown gets before the process exits regardless. */
+const SHUTDOWN_GRACE_MS = 3000
 
 const WINDOW_DEFAULTS = { width: 1280, height: 860, minWidth: 1024, minHeight: 700 }
 
@@ -18,6 +22,7 @@ const RENDERER_ROOT = join(HERE, '..', 'renderer')
 let bridge: RunningBridge | null = null
 let renderer: RendererServer | null = null
 let settingsPath = ''
+let logger: Logger | null = null
 
 /**
  * Start the MCP bridge and the loopback server that hosts the editor.
@@ -28,6 +33,9 @@ let settingsPath = ''
  * @returns the URL to load in the window
  */
 async function startServices(): Promise<string> {
+  logger = createLogger(app.getPath('documents'))
+  logger.log('Information', `Skie AI Editor ${app.getVersion()} starting`)
+
   settingsPath = configPath(app.getPath('documents'))
 
   // The renderer asks for the saved settings synchronously while its store is
@@ -37,6 +45,9 @@ async function startServices(): Promise<string> {
   })
   ipcMain.handle('scratch-ai:write-config', (_event, config: StoredConfig) => {
     writeConfig(settingsPath, config)
+  })
+  ipcMain.on('scratch-ai:log', (_event, level: LogLevel, message: string) => {
+    logger?.log(level, message)
   })
 
   renderer = await startRendererServer(RENDERER_ROOT, LOOPBACK)
@@ -57,6 +68,59 @@ async function startServices(): Promise<string> {
   // to the page itself, which is the only origin allowed to use them.
   target.searchParams.set('aiBridge', bridge.editorUrl)
   return target.toString()
+}
+
+/**
+ * Build the application menu.
+ *
+ * Electron's default menu has no entry that shuts the bridge down, so the app
+ * gets its own File menu whose Exit runs the same path as closing the window.
+ */
+function buildMenu(): void {
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      {
+        label: '&File',
+        submenu: [{ label: 'E&xit', accelerator: 'CmdOrCtrl+Q', click: () => app.quit() }],
+      },
+      {
+        label: '&Edit',
+        submenu: [
+          { role: 'undo' },
+          { role: 'redo' },
+          { type: 'separator' },
+          { role: 'cut' },
+          { role: 'copy' },
+          { role: 'paste' },
+          { role: 'selectAll' },
+        ],
+      },
+      {
+        label: '&View',
+        submenu: [
+          { role: 'reload' },
+          { role: 'toggleDevTools' },
+          { type: 'separator' },
+          { role: 'resetZoom' },
+          { role: 'zoomIn' },
+          { role: 'zoomOut' },
+          { type: 'separator' },
+          { role: 'togglefullscreen' },
+        ],
+      },
+      {
+        label: '&Help',
+        submenu: [
+          {
+            label: 'Open logs folder',
+            click: () => {
+              if (logger) void shell.openPath(logger.directory)
+            },
+          },
+        ],
+      },
+    ]),
+  )
 }
 
 /**
@@ -113,7 +177,16 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  logger?.log('Information', 'Skie AI Editor shutting down')
   void stopServices()
+
+  // A socket that refuses to close must not strand the user in an app that
+  // will not exit, so the process leaves anyway shortly after.
+  const forceExit = setTimeout(() => {
+    logger?.log('Warning', 'Shutdown took too long; exiting anyway')
+    app.exit(0)
+  }, SHUTDOWN_GRACE_MS)
+  forceExit.unref()
 })
 
 app.on('activate', () => {
@@ -127,9 +200,13 @@ app.on('activate', () => {
 app
   .whenReady()
   .then(startServices)
-  .then(createWindow)
+  .then((url) => {
+    buildMenu()
+    createWindow(url)
+  })
   .catch((error: unknown) => {
     const message = error instanceof Error ? error.message : String(error)
+    logger?.log('Error', `Startup failed: ${message}`)
     dialog.showErrorBox('Skie AI Editor could not start', message)
     app.exit(1)
   })

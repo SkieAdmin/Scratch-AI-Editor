@@ -24,7 +24,7 @@
     "lint": "eslint && prettier --check .",
     "stage": "node scripts/stage-renderer.mjs",
     "start": "npm run build && electron .",
-    "test": "npm run lint"
+    "test": "npm run lint && vitest run"
   },
   "dependencies": {
     "@skieadmin/scratch-ai-bridge": "15.1.1"
@@ -38,6 +38,7 @@
     "eslint-config-scratch": "14.1.72",
     "prettier": "3.9.8",
     "rimraf": "6.1.2",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "vitest": "4.1.11"
   }
 }
