@@ -7,14 +7,17 @@
     It never swallows clicks; only its children do.
 */
 /*
-    The panel reserves its own column in the editor's flex row, so the stage and
-    blocks shrink instead of being covered. Filling the wrapper is what lets the
-    tab sit just outside this element's leading edge and travel with the panel.
+    Anchored to the window rather than to the editor's flex row: the row cannot
+    shrink below roughly 1024px, so a panel that took space from it would make
+    the whole editor scroll sideways. Zero width keeps it out of the layout while
+    giving the panel and its tab something to position against.
 */
 .root {
-    position: relative;
-    width: 100%;
-    height: 100%;
+    position: fixed;
+    inset-block-start: $menu-bar-height;
+    inset-block-end: 0;
+    inset-inline-end: 0;
+    width: 0;
     pointer-events: none;
 }
 

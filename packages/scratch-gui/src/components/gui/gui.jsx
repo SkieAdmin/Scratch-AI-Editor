@@ -32,7 +32,6 @@ import DragLayer from '../../containers/drag-layer.jsx';
 import ConnectionModal from '../../containers/connection-modal.jsx';
 import TelemetryModal from '../telemetry-modal/telemetry-modal.jsx';
 import AiAssistPanel from '../../containers/ai-assist-panel.jsx';
-import {PANEL_WIDTH} from '../../lib/ai/constants';
 import AiAboutModal from '../../containers/ai-about-modal.jsx';
 import AiSettingsModal from '../../containers/ai-settings-modal.jsx';
 
@@ -121,7 +120,6 @@ const GUIComponent = props => {
         accountMenuOptions,
         activeTabIndex,
         aiAboutModalVisible,
-        aiAssistVisible,
         aiSettingsModalVisible,
         alertsVisible,
         authorId,
@@ -257,17 +255,8 @@ const GUIComponent = props => {
         isRendererSupported = Renderer.isSupported();
     }
 
-    /*
-        Opening the panel takes horizontal room away from the editor, so the window
-        has to be that much wider before the stage still fits at full size. Raising
-        the threshold lets `resolveStageSize` fall back to the constrained stage
-        instead of the layout overflowing.
-    */
-    const fullSizeMinWidth = layout.fullSizeMinWidth + (aiAssistVisible ? PANEL_WIDTH : 0);
-
-    return (<MediaQuery minWidth={fullSizeMinWidth}>{isFullSize => {
+    return (<MediaQuery minWidth={layout.fullSizeMinWidth}>{isFullSize => {
         const stageSize = resolveStageSize(stageSizeMode, isFullSize);
-        const aiAssistStyle = aiAssistVisible ? {width: `${PANEL_WIDTH}px`} : {};
         const boxStyles = classNames(styles.bodyWrapper, {
             [styles.bodyWrapperWithoutMenuBar]: menuBarHidden
         });
@@ -594,10 +583,7 @@ const GUIComponent = props => {
                         </Box>
 
                         {isFullScreen ? null : (
-                            <Box
-                                className={styles.aiAssistWrapper}
-                                style={aiAssistStyle}
-                            >
+                            <Box className={styles.aiAssistWrapper}>
                                 <AiAssistPanel vm={vm} />
                             </Box>
                         )}
@@ -613,7 +599,6 @@ GUIComponent.propTypes = {
     accountMenuOptions: AccountMenuOptionsPropTypes,
     activeTabIndex: PropTypes.number,
     aiAboutModalVisible: PropTypes.bool,
-    aiAssistVisible: PropTypes.bool,
     aiSettingsModalVisible: PropTypes.bool,
     authorId: PropTypes.oneOfType([PropTypes.string, PropTypes.bool]), // can be false
     authorThumbnailUrl: PropTypes.string,
@@ -735,7 +720,6 @@ GUIComponent.defaultProps = {
 
 const mapStateToProps = state => ({
     aiAboutModalVisible: state.scratchGui.modals.aiAboutModal,
-    aiAssistVisible: state.scratchGui.aiAssist.visible,
     aiSettingsModalVisible: state.scratchGui.modals.aiSettingsModal,
     // This is the button's mode, as opposed to the actual current state
     blocksId: state.scratchGui.timeTravel.year.toString(),

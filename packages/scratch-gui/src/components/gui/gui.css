@@ -284,12 +284,12 @@ body .alerts-container {
 
 .ai-assist-wrapper {
     /*
-        Sits beside the stage column as a third flex child. The panel's own width
-        is applied inline from redux so it can be dragged; this only fixes it
-        against growing or shrinking away.
+        Hosts the assistant, which positions itself against the window's trailing
+        edge. It claims no width of its own: the editor row cannot shrink below
+        roughly 1024px, so a panel that took a column would push the row into a
+        horizontal scroll instead of making room.
     */
-    flex-grow: 0;
-    flex-shrink: 0;
-    position: relative;
+    flex: 0 0 0;
+    width: 0;
     z-index: $z-index-ai-assist;
 }

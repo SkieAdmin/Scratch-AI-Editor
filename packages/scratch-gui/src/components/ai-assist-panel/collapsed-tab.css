@@ -2,16 +2,16 @@
 @import "../../css/colors.css";
 
 /*
-    Anchored just outside the wrapper's leading edge. The wrapper is zero-width
-    when the panel is closed and panel-width when it is open, so the tab rides
-    along with the panel instead of being covered by it.
+    Sits against the window's trailing edge while the panel is closed, and moves
+    to the panel's leading edge while it is open, so it always reads as the
+    handle attached to the panel.
 */
 .tab {
     position: absolute;
-    inset-inline-end: 100%;
+    inset-inline-end: 0;
     top: 50%;
     transform: translateY(-50%);
-    transition: none;
+    transition: inset-inline-end 0.25s ease;
 
     display: flex;
     flex-direction: column;
@@ -27,6 +27,10 @@
     color: $ui-white;
     cursor: pointer;
     pointer-events: auto;
+}
+
+.tab.beside-panel {
+    inset-inline-end: $ai-assist-panel-width;
 }
 
 .tab:hover {
