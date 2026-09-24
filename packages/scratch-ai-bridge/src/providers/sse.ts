@@ -160,7 +160,6 @@ export class ChatStreamAccumulator {
         id: call.id === '' ? `call_${index}` : call.id,
         name: call.name,
         args: parseToolCallArguments(call.name, call.argumentsText),
-        rawArguments: call.argumentsText,
       }))
 
     return {

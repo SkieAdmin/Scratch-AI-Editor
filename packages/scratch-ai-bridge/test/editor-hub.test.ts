@@ -6,6 +6,7 @@ import {
   PROTOCOL_VERSION,
   type ChatRequestEnvelope,
   type ChatResponder,
+  type ChatResult,
   type ToolDefinition,
 } from '../src'
 import { FakeSocket } from './test-utilities'
@@ -273,6 +274,7 @@ describe('EditorHub chat proxying', () => {
     )
 
     const chat = captured[0]
+    expect(chat.request.id).toBe('7')
     expect(chat.request.provider).toBe('deepseek')
     expect(chat.request.model).toBe('deepseek-reasoner')
 
@@ -290,6 +292,70 @@ describe('EditorHub chat proxying', () => {
         result: { content: 'hello', reasoning: 'thinking', toolCalls: [], finishReason: 'stop' },
       },
     ])
+  })
+
+  it('reads the request out of the fields the editor writes', () => {
+    const captured: ChatRequestEnvelope[] = []
+    const hub = new EditorHub({
+      heartbeatIntervalMs: 0,
+      onChatRequest: (request) => {
+        captured.push(request)
+      },
+    })
+    attachEditor(hub)
+
+    // Exactly the envelope the editor's BridgeClient puts on the wire.
+    hub.handleMessage(
+      JSON.stringify({
+        type: 'chat',
+        id: '3',
+        provider: 'deepseek',
+        model: 'deepseek-chat',
+        messages: [{ role: 'user', content: 'add a cat' }],
+        tools: [{ type: 'function', function: { name: 'create_sprite' } }],
+      }),
+    )
+
+    expect(captured[0]).toMatchObject({
+      id: '3',
+      provider: 'deepseek',
+      model: 'deepseek-chat',
+      messages: [{ role: 'user', content: 'add a cat' }],
+    })
+    expect(captured[0].tools).toHaveLength(1)
+  })
+
+  it('round-trips a chat result, tool calls and their raw arguments included', () => {
+    const responders: ChatResponder[] = []
+    const hub = new EditorHub({
+      heartbeatIntervalMs: 0,
+      onChatRequest: (_request, responder) => {
+        responders.push(responder)
+      },
+    })
+    const socket = attachEditor(hub)
+
+    hub.handleMessage(JSON.stringify({ type: 'chat', id: '9', provider: 'ollama', model: 'llama3', messages: [] }))
+
+    const result: ChatResult = {
+      content: '',
+      reasoning: '',
+      finishReason: 'tool_calls',
+      toolCalls: [{ id: 'call_a', name: 'create_sprite', args: { name: 'Cat' }, rawArguments: '{"name":"Cat"}' }],
+    }
+    responders[0].done(result)
+
+    expect(socket.sentOfType('chat-done')).toEqual([{ type: 'chat-done', id: '9', ok: true, result }])
+  })
+
+  it('passes a cancellation on so the provider request can be stopped', () => {
+    const onChatCancel = vi.fn()
+    const hub = new EditorHub({ heartbeatIntervalMs: 0, onChatCancel })
+    attachEditor(hub)
+
+    hub.handleMessage(JSON.stringify({ type: 'chat-cancel', id: '7' }))
+
+    expect(onChatCancel).toHaveBeenCalledWith('7')
   })
 
   it('reports a chat failure to the editor', () => {

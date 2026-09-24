@@ -110,7 +110,9 @@ describe('ChatStreamAccumulator', () => {
     accumulator.add({ choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: '{"name":' } }] } }] })
     accumulator.add({ choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: '"Cat"}' } }] } }] })
 
-    expect(accumulator.result().toolCalls).toEqual([{ id: 'call_a', name: 'create_sprite', args: { name: 'Cat' } }])
+    expect(accumulator.result().toolCalls).toEqual([
+      { id: 'call_a', name: 'create_sprite', args: { name: 'Cat' }, rawArguments: '{"name":"Cat"}' },
+    ])
   })
 
   it('routes interleaved fragments to the call named by their index', () => {
@@ -133,8 +135,8 @@ describe('ChatStreamAccumulator', () => {
     accumulator.add({ choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: ':10}' } }] } }] })
 
     expect(accumulator.result().toolCalls).toEqual([
-      { id: 'call_a', name: 'move', args: { steps: 10 } },
-      { id: 'call_b', name: 'say', args: { text: 'hi' } },
+      { id: 'call_a', name: 'move', args: { steps: 10 }, rawArguments: '{"steps":10}' },
+      { id: 'call_b', name: 'say', args: { text: 'hi' }, rawArguments: '{"text":"hi"}' },
     ])
   })
 
@@ -153,7 +155,26 @@ describe('ChatStreamAccumulator', () => {
     accumulator.add({ choices: [{ delta: { tool_calls: [{ id: 'call_a', function: { name: 'stop' } }] } }] })
     accumulator.add({ choices: [{ delta: { tool_calls: [{ function: { arguments: '{}' } }] } }] })
 
-    expect(accumulator.result().toolCalls).toEqual([{ id: 'call_a', name: 'stop', args: {} }])
+    expect(accumulator.result().toolCalls).toEqual([{ id: 'call_a', name: 'stop', args: {}, rawArguments: '{}' }])
+  })
+
+  it('keeps the argument text the model produced, even when it is not JSON', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const accumulator = new ChatStreamAccumulator()
+
+    accumulator.add({
+      choices: [{ delta: { tool_calls: [{ index: 0, id: 'c', function: { name: 'say', arguments: 'not json' } }] } }],
+    })
+
+    // The editor has to echo this text back verbatim in its next request, so it
+    // survives alongside the parsed arguments rather than being re-serialised.
+    expect(accumulator.result().toolCalls[0]).toEqual({
+      id: 'c',
+      name: 'say',
+      args: 'not json',
+      rawArguments: 'not json',
+    })
+    warn.mockRestore()
   })
 
   it('gives a call that never carried an id one derived from its index', () => {

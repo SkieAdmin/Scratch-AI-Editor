@@ -92,9 +92,6 @@ export async function startBridge(options: BridgeOptions = {}): Promise<RunningB
 
   const mcpServers: McpSdkServer[] = []
 
-  /** In-flight chat completions, so a `chat-cancel` can stop the provider request. */
-  const runningChats = new Map<string, AbortController>()
-
   const hub = new EditorHub({
     invokeTimeoutMs: options.invokeTimeoutMs,
     onToolsChanged: (tools) => {
@@ -105,14 +102,7 @@ export async function startBridge(options: BridgeOptions = {}): Promise<RunningB
       log('the editor disconnected')
     },
     onChatRequest: (request, responder) => {
-      const controller = new AbortController()
-      runningChats.set(request.id, controller)
-      void runChat(request, responder, providerContext, controller.signal).finally(() => {
-        runningChats.delete(request.id)
-      })
-    },
-    onChatCancel: (id) => {
-      runningChats.get(id)?.abort()
+      void runChat(request, responder, providerContext)
     },
     onModelsRequest: (provider, responder) => {
       void runModelListing(provider, responder, providerContext)
@@ -230,13 +220,11 @@ async function readJsonBody(request: IncomingMessage): Promise<unknown> {
  * @param request what the editor asked for
  * @param responder how to answer it
  * @param context resolved provider settings
- * @param signal aborts the provider request when the editor cancels
  */
 async function runChat(
   request: ChatRequestEnvelope,
   responder: ChatResponder,
   context: ProviderContext,
-  signal: AbortSignal,
 ): Promise<void> {
   try {
     const adapter = createProvider(request.provider, context)
@@ -250,13 +238,9 @@ async function runChat(
         maxTokens: request.maxTokens,
       },
       (delta) => responder.delta(delta),
-      signal,
     )
     responder.done(result)
   } catch (error) {
-    // A cancelled request has no one left to answer: the editor dropped it the
-    // moment it sent `chat-cancel`.
-    if (signal.aborted) return
     responder.fail(describeError(error))
   }
 }
