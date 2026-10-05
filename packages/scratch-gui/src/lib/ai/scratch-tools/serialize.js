@@ -14,6 +14,17 @@ const BROADCAST_VARIABLE_TYPE = 'broadcast_msg';
 /** Inputs whose name starts with this hold a branch of a C-block, not a value. */
 const BRANCH_INPUT_PREFIX = 'SUBSTACK';
 
+/**
+ * The toolbox's id for a category, by the opcode prefix of its blocks, where
+ * the two differ: the palette calls "event_" blocks "events", for example.
+ */
+const CATEGORY_BY_PREFIX = {
+    data: 'variables',
+    event: 'events',
+    operator: 'operators',
+    procedures: 'myBlocks'
+};
+
 /** How much of a long string value to show before eliding the rest. */
 const MAX_VALUE_LENGTH = 120;
 
@@ -375,9 +386,11 @@ const buildBlockCatalog = (runtime, toolboxXml) => {
     });
     Object.keys(runtime._primitives).forEach(opcode => {
         if (byOpcode.has(opcode)) return;
+        const prefix = opcode.split('_')[0];
         byOpcode.set(opcode, {
             opcode,
-            category: opcode.split('_')[0],
+            // Named as the toolbox names it, so one category filter finds all of its blocks.
+            category: CATEGORY_BY_PREFIX[prefix] || prefix,
             inputs: [],
             fields: []
         });
@@ -392,6 +405,7 @@ const buildBlockCatalog = (runtime, toolboxXml) => {
 export {
     BRANCH_INPUT_PREFIX,
     BROADCAST_VARIABLE_TYPE,
+    CATEGORY_BY_PREFIX,
     LIST_VARIABLE_TYPE,
     SCALAR_VARIABLE_TYPE,
     buildBlockCatalog,

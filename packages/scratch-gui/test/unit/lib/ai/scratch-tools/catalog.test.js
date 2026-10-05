@@ -1,11 +1,12 @@
 import connectScratchBlocks from '../../../../../src/lib/blocks';
+import makeToolboxXML from '../../../../../src/lib/make-toolbox-xml';
 import {completeCatalog} from '../../../../../src/lib/ai/scratch-tools/catalog';
 import {createToolRunner} from '../../../../../src/lib/ai/scratch-tools/runner';
 import {makeTarget, makeVm} from './fake-vm';
 
 jest.mock('../../../../../src/lib/make-toolbox-xml', () => ({
     __esModule: true,
-    default: () => '<xml></xml>'
+    default: jest.fn(() => '<xml></xml>')
 }));
 
 /** The parts of the editor's toolbox these tests look at, written as make-toolbox-xml writes them. */
@@ -30,7 +31,7 @@ const TOOLBOX_XML = `<xml>
             </value>
         </block>
     </category>
-    <category name="Events" toolboxitemid="event">
+    <category name="Events" toolboxitemid="events">
         <block type="event_whenkeypressed"></block>
         <block type="event_whenbackdropswitchesto"></block>
     </category>
@@ -65,10 +66,31 @@ describe('get_block_catalog', () => {
     test('reports the BACKDROP field of "when backdrop switches to", with the backdrops there are', async () => {
         const {runTool} = makeProject();
 
-        const catalog = await runTool('get_block_catalog', {targetId: 'Cat', category: 'event'});
+        const catalog = await runTool('get_block_catalog', {targetId: 'Cat', category: 'events'});
 
         expect(findBlock(catalog, 'event_whenbackdropswitchesto').fields)
             .toEqual([{name: 'BACKDROP', options: ['Jungle', 'Woods']}]);
+    });
+
+    /*
+     * The palette calls its event blocks "events", while blocks it does not
+     * show were filed under their opcode prefix, "event", so neither name
+     * found them all.
+     */
+    test('finds a category by the palette\'s name or by its opcode prefix', async () => {
+        const {runTool} = makeProject();
+
+        const byPaletteName = await runTool('get_block_catalog', {targetId: 'Cat', category: 'events'});
+        const byPrefix = await runTool('get_block_catalog', {targetId: 'Cat', category: 'event'});
+
+        const opcodes = catalog => catalog.blocks.map(entry => entry.opcode).sort();
+        expect(opcodes(byPrefix)).toEqual(opcodes(byPaletteName));
+        // event_broadcast is not in this toolbox, so it is filed by its opcode prefix.
+        expect(opcodes(byPaletteName)).toEqual(expect.arrayContaining([
+            'event_whenbackdropswitchesto',
+            'event_whenkeypressed',
+            'event_broadcast'
+        ]));
     });
 
     test('reports the KEY_OPTION field of "when key pressed"', async () => {
@@ -123,6 +145,19 @@ describe('get_block_catalog', () => {
             options: ['_random_', '_mouse_', 'Dog'],
             optionLabels: {_random_: 'random position', _mouse_: 'mouse-pointer'}
         });
+    });
+
+    /*
+     * Built without the names the editor passes, every menu in the palette
+     * defaulted to an empty item.
+     */
+    test('reads the palette the editor would show, newest costume, backdrop and sound included', async () => {
+        const {vm} = makeVm();
+        const {runTool} = createToolRunner(vm);
+
+        await runTool('get_block_catalog', {targetId: 'Cat'});
+
+        expect(makeToolboxXML).toHaveBeenCalledWith(false, false, 'sprite-id', [], 'costume2', 'backdrop1', 'Meow');
     });
 
     test('fills a menu from the target the scripts would be on', async () => {

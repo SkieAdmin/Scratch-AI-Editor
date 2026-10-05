@@ -126,8 +126,9 @@ const TOOL_DEFINITIONS = [
                 targetId: targetProperty,
                 category: {
                     type: 'string',
-                    description: 'Only return blocks in this palette category, for example "motion", ' +
-                        '"looks", "control", "operators", "data".'
+                    description: 'Only return blocks in this palette category: "motion", "looks", "sound", ' +
+                        '"events", "control", "sensing", "operators", "variables" or "myBlocks", or an ' +
+                        'extension\'s id such as "pen".'
                 },
                 search: {
                     type: 'string',

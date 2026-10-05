@@ -15,6 +15,7 @@ import {createRuntimeObserver} from './runtime-observer';
 import {createTestingHandlers} from './testing-tools';
 import {
     BROADCAST_VARIABLE_TYPE,
+    CATEGORY_BY_PREFIX,
     LIST_VARIABLE_TYPE,
     SCALAR_VARIABLE_TYPE,
     buildBlockCatalog,
@@ -124,8 +125,13 @@ const assertNumber = (name, value) => {
  *   listening to the VM
  */
 const createToolRunner = (vm, options = {}) => {
+    const lastName = items => (items.length > 0 ? items[items.length - 1].name : '');
+    // The same arguments the editor's own palette is built with, so the menus
+    // in it default to the newest costume, backdrop and sound as there.
     const getToolboxXml = options.getToolboxXml ||
-        (target => makeToolboxXML(false, target.isStage, target.id, vm.runtime.getBlocksXML(target)));
+        (target => makeToolboxXML(false, target.isStage, target.id, vm.runtime.getBlocksXML(target),
+            lastName(target.getCostumes()), lastName(vm.runtime.getTargetForStage().getCostumes()),
+            lastName(target.getSounds())));
     const desktop = options.desktop || null;
     const project = options.project || null;
 
@@ -537,7 +543,9 @@ const createToolRunner = (vm, options = {}) => {
             let blocks = buildBlockCatalog(vm.runtime, getToolboxXml(target));
 
             if (typeof args.category === 'string') {
-                const category = args.category.toLowerCase();
+                // The palette's own id ("events") and its blocks' opcode prefix ("event") both name a category.
+                const wanted = args.category.toLowerCase();
+                const category = (CATEGORY_BY_PREFIX[wanted] || wanted).toLowerCase();
                 blocks = blocks.filter(entry => (entry.category || '').toLowerCase() === category);
             }
             if (typeof args.search === 'string') {

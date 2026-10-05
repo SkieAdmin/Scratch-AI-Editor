@@ -116,6 +116,18 @@ describe('buildBlockCatalog', () => {
         ]);
     });
 
+    test('files a block the toolbox does not show under the toolbox\'s name for its category', () => {
+        const catalog = buildBlockCatalog({
+            ...runtime,
+            _primitives: {event_broadcast: () => {}, data_setvariableto: () => {}, operator_add: () => {}}
+        }, TOOLBOX_XML);
+        const categoryOf = opcode => catalog.find(entry => entry.opcode === opcode).category;
+
+        expect(categoryOf('event_broadcast')).toBe('events');
+        expect(categoryOf('data_setvariableto')).toBe('variables');
+        expect(categoryOf('operator_add')).toBe('operators');
+    });
+
     test('flags hat blocks', () => {
         const catalog = buildBlockCatalog(runtime, TOOLBOX_XML);
 
