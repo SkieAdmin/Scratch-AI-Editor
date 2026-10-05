@@ -4,6 +4,8 @@ import soundLibraryContent from '../../libraries/sounds.json';
 import spriteLibraryContent from '../../libraries/sprites.json';
 import makeToolboxXML from '../../make-toolbox-xml';
 import randomizeSpritePosition from '../../randomize-sprite-position';
+import {isScratchBlocksType} from './block-definitions';
+import {menuFieldFor, menuInputFor} from './menus';
 import {
     BROADCAST_VARIABLE_TYPE,
     LIST_VARIABLE_TYPE,
@@ -182,7 +184,8 @@ const createToolRunner = (vm, options = {}) => {
     const isKnownOpcode = opcode => Boolean(vm.runtime.getOpcodeFunction(opcode)) ||
         vm.runtime.getIsHat(opcode) ||
         Object.prototype.hasOwnProperty.call(SHADOW_FIELDS, opcode) ||
-        opcode.endsWith('_menu');
+        menuFieldFor(vm.runtime, opcode) !== null ||
+        isScratchBlocksType(opcode);
 
     /**
      * Load the extension an opcode belongs to, if it names one.
@@ -202,7 +205,7 @@ const createToolRunner = (vm, options = {}) => {
     };
 
     /**
-     * Every opcode a script spec mentions, nested inputs included.
+     * Every opcode a script spec mentions, nested inputs and named shadows included.
      * @param {Array<object>} specs the block specs to walk
      * @returns {Array<string>} the opcodes found
      */
@@ -211,7 +214,8 @@ const createToolRunner = (vm, options = {}) => {
         const nested = Object.values(spec.inputs || {}).flatMap(
             value => (Array.isArray(value) ? collectOpcodes(value) : collectOpcodes([value]))
         );
-        return (typeof spec.opcode === 'string' ? [spec.opcode] : []).concat(nested);
+        const own = [spec.opcode, spec.shadow].filter(opcode => typeof opcode === 'string');
+        return own.concat(nested);
     });
 
     /**
@@ -293,37 +297,55 @@ const createToolRunner = (vm, options = {}) => {
         );
     };
 
-    const buildShadow = (inputName, value, parentId, records) => {
+    /**
+     * Build the shadow block that holds an input's value.
+     * @param {object} target the target the script is being built on
+     * @param {string} inputName the input being filled
+     * @param {number|string|object} value a literal, or a slot spec naming the shadow
+     * @param {string} parentId the block the input belongs to
+     * @param {Array<object>} records where new block records are collected
+     * @param {?string} menuOpcode the menu shadow the input holds, if it is a menu input
+     * @returns {object} the shadow block record
+     */
+    const buildShadow = (target, inputName, value, parentId, records, menuOpcode) => {
         let opcode;
         let field;
         let literal;
 
-        if (typeof value === 'number') {
-            opcode = 'math_number';
-            field = 'NUM';
-            literal = value;
-        } else if (typeof value === 'string') {
-            opcode = 'text';
-            field = 'TEXT';
-            literal = value;
-        } else {
+        if (typeof value === 'object') {
             opcode = value.shadow;
             assertKnownOpcode(opcode);
-            field = value.field || SHADOW_FIELDS[opcode];
+            field = value.field || SHADOW_FIELDS[opcode] || menuFieldFor(vm.runtime, opcode);
             if (!field) {
                 throw new Error(
                     `Input "${inputName}" uses shadow "${opcode}", which is not one of the standard ` +
-                    'literal slots, so the spec must also name the "field" that holds the value.'
+                    'literal slots or menus, so the spec must also name the "field" that holds the value.'
                 );
             }
             literal = value.value;
+        } else if (menuOpcode) {
+            // A plain value in a menu input names the item to choose, as picking
+            // it from the dropdown would.
+            opcode = menuOpcode;
+            field = menuFieldFor(vm.runtime, menuOpcode);
+            literal = value;
+        } else if (typeof value === 'number') {
+            opcode = 'math_number';
+            field = 'NUM';
+            literal = value;
+        } else {
+            opcode = 'text';
+            field = 'TEXT';
+            literal = value;
         }
 
         const record = {
             id: uid(),
             opcode,
             inputs: {},
-            fields: {[field]: {name: field, value: String(literal)}},
+            // A broadcast menu names a message, which has to resolve to the
+            // broadcast it refers to just as a field on the block itself would.
+            fields: {[field]: buildField(target, field, String(literal))},
             next: null,
             topLevel: false,
             parent: parentId,
@@ -401,7 +423,8 @@ const createToolRunner = (vm, options = {}) => {
                 );
             }
 
-            const shadow = buildShadow(inputName, value, record.id, records);
+            const menuOpcode = isLiteral ? menuInputFor(vm.runtime, spec.opcode, inputName) : null;
+            const shadow = buildShadow(target, inputName, value, record.id, records, menuOpcode);
             record.inputs[inputName] = {name: inputName, block: shadow.id, shadow: shadow.id};
         });
 

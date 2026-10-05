@@ -59,6 +59,9 @@ export async function serveMcpOverStdio(server: Server): Promise<StdioServerTran
 /**
  * Serve an MCP server over Streamable HTTP, for clients that attach to a URL
  * rather than spawning a process.
+ *
+ * The transport holds exactly one session, so only the first client to
+ * initialize can use it. `McpHttpSessions` serves any number of clients.
  * @param server the server to connect
  * @returns the connected transport, ready to handle requests
  */

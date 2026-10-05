@@ -1,4 +1,5 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
+import type { IncomingHttpHeaders } from 'node:http'
 
 /**
  * Origins a browser page may dial in from when the operator configures no
@@ -8,6 +9,9 @@ const LOCAL_ORIGIN_PATTERN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)
 
 /** Wildcard an operator can pass to `--allow-origin` to switch the check off. */
 const ALLOW_ANY_ORIGIN = '*'
+
+/** Bind addresses that mean "every interface" rather than one name the machine answers to. */
+const WILDCARD_HOSTS = new Set(['', '0.0.0.0', '::'])
 
 /**
  * Decide whether a page at this origin may drive the editor.
@@ -60,14 +64,17 @@ export interface UpgradePolicy {
   path: string
 }
 
-/** The verdict on one WebSocket upgrade attempt. */
-export interface UpgradeVerdict {
+/** The verdict on one request to the bridge. */
+export interface RequestVerdict {
   ok: boolean
-  /** HTTP status to answer a rejected upgrade with. */
+  /** HTTP status to answer a rejected request with. */
   status: number
   /** Human-readable reason, logged by the bridge and sent in the HTTP response. */
   message: string
 }
+
+/** The verdict on one WebSocket upgrade attempt. */
+export type UpgradeVerdict = RequestVerdict
 
 /**
  * Check one WebSocket upgrade against the bridge's policy.
@@ -95,4 +102,76 @@ export function verifyUpgrade(
   }
 
   return { ok: true, status: 101, message: 'Accepted.' }
+}
+
+/** What the operator allows on the MCP endpoint. */
+export interface McpRequestPolicy {
+  /** `Host` header values the endpoint answers to, in lower case, e.g. `127.0.0.1:8610`. */
+  allowedHosts: readonly string[]
+  /** Exact origins to allow, or empty to allow any local origin. */
+  allowedOrigins: readonly string[]
+  /** The bearer token every request must carry, or undefined when none is required. */
+  token?: string
+}
+
+/**
+ * The `Host` header values the MCP endpoint answers to.
+ *
+ * A DNS rebinding attack points a hostile name at 127.0.0.1, but the browser
+ * still sends that hostile name as `Host`, so only the names this machine uses
+ * for itself get through. A bridge bound to one specific address can also be
+ * reached by that address.
+ * @param host the address the bridge is bound to
+ * @param port the port it listens on
+ * @returns the allowed values, in lower case
+ */
+export function allowedMcpHosts(host: string, port: number): string[] {
+  const hosts = [`127.0.0.1:${port}`, `localhost:${port}`]
+  if (WILDCARD_HOSTS.has(host)) return hosts
+
+  const bound = (host.includes(':') ? `[${host}]:${port}` : `${host}:${port}`).toLowerCase()
+  return hosts.includes(bound) ? hosts : [...hosts, bound]
+}
+
+/**
+ * Check one request to the MCP endpoint against the bridge's policy.
+ *
+ * Non-browser clients such as Claude Code send no `Origin`, so the origin check
+ * only stops web pages; the optional token is what holds back other local
+ * programs.
+ * @param headers what the request sent, of which Host, Origin and Authorization are read
+ * @param policy what the operator allows
+ * @returns whether to accept, and why not when rejecting
+ */
+export function verifyMcpRequest(headers: IncomingHttpHeaders, policy: McpRequestPolicy): RequestVerdict {
+  const host = headers.host?.toLowerCase()
+  if (host === undefined || !policy.allowedHosts.includes(host)) {
+    return {
+      ok: false,
+      status: 403,
+      message: `Host ${headers.host ?? '(none)'} is not allowed to reach this bridge.`,
+    }
+  }
+  if (!isOriginAllowed(headers.origin, policy.allowedOrigins)) {
+    return { ok: false, status: 403, message: `Origin ${headers.origin} is not allowed to reach this bridge.` }
+  }
+  if (policy.token !== undefined && !isTokenValid(readBearerToken(headers.authorization), policy.token)) {
+    return {
+      ok: false,
+      status: 401,
+      message: 'Missing or incorrect MCP token. Send it as "Authorization: Bearer <token>".',
+    }
+  }
+
+  return { ok: true, status: 200, message: 'Accepted.' }
+}
+
+/**
+ * Read the token out of an `Authorization: Bearer <token>` header.
+ * @param header the header's value, if the request sent one
+ * @returns the token, or null when there is no bearer token
+ */
+function readBearerToken(header: string | undefined): string | null {
+  const match = /^Bearer\s+(\S+)\s*$/i.exec(header ?? '')
+  return match ? match[1] : null
 }

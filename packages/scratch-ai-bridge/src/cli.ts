@@ -19,6 +19,8 @@ Options:
   --allow-origin <o>   Exact browser origin allowed to connect; repeatable.
                        Defaults to any http(s) origin on localhost
   --mcp-http           Also serve MCP over Streamable HTTP at /mcp
+  --mcp-token <secret> Bearer token MCP clients must send to /mcp; none is
+                       required when this is omitted
   --no-mcp-stdio       Do not serve MCP over stdio
   --config <path>      JSON config file with ports, token and provider settings
   -h, --help           Show this message
@@ -38,6 +40,7 @@ export async function runCli(argv: string[]): Promise<RunningBridge | null> {
       help: { type: 'boolean', short: 'h' },
       host: { type: 'string' },
       'mcp-http': { type: 'boolean' },
+      'mcp-token': { type: 'string' },
       'no-mcp-stdio': { type: 'boolean' },
       port: { type: 'string' },
       token: { type: 'string' },
@@ -58,12 +61,13 @@ export async function runCli(argv: string[]): Promise<RunningBridge | null> {
     host: values.host,
     mcpHttp: values['mcp-http'],
     mcpStdio,
+    mcpToken: values['mcp-token'],
     port: values.port === undefined ? undefined : parsePort(values.port),
     token: values.token,
     version: packageJson.version,
   })
 
-  printBanner(bridge, config, mcpStdio)
+  printBanner(bridge, config, mcpStdio, values['mcp-token'] ?? config.mcpToken)
   return bridge
 }
 
@@ -86,15 +90,22 @@ function parsePort(value: string): number {
  * @param bridge the running bridge
  * @param config the operator's config file contents
  * @param mcpStdio whether MCP is served over stdio
+ * @param mcpToken the bearer token MCP clients must send, if one is required
  */
-function printBanner(bridge: RunningBridge, config: BridgeConfigFile, mcpStdio: boolean): void {
+function printBanner(
+  bridge: RunningBridge,
+  config: BridgeConfigFile,
+  mcpStdio: boolean,
+  mcpToken: string | undefined,
+): void {
   const settings = resolveProviderSettings(config, process.env)
   const withKeys = REMOTE_PROVIDER_IDS.filter((id) => settings[id].apiKey)
   const withoutKeys = REMOTE_PROVIDER_IDS.filter((id) => !settings[id].apiKey)
 
   log(`listening on ${bridge.host}:${bridge.port}`)
   log(`MCP over stdio: ${mcpStdio ? 'on' : 'off'}`)
-  log(`MCP over Streamable HTTP: ${bridge.mcpHttpUrl ?? 'off'}`)
+  const tokenNote = bridge.mcpHttpUrl !== null && mcpToken ? ' (bearer token required)' : ''
+  log(`MCP over Streamable HTTP: ${bridge.mcpHttpUrl ?? 'off'}${tokenNote}`)
   log(`API keys loaded for: ${withKeys.length > 0 ? withKeys.join(', ') : 'none'}`)
   if (withoutKeys.length > 0) {
     log(`no API key for: ${withoutKeys.join(', ')} (local providers such as ${PROVIDER_IDS.OLLAMA} need none)`)

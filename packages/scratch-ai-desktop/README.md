@@ -50,8 +50,8 @@ npx electron packages/scratch-ai-desktop                  # launch what you just
 
 ```text
 Electron main process
-├── MCP bridge          127.0.0.1:<random>   tool calls in, WebSocket to the window
-│   └── MCP over Streamable HTTP at /mcp     for Claude Desktop and friends
+├── MCP bridge          127.0.0.1:8610       tool calls in, WebSocket to the window
+│   └── MCP over Streamable HTTP at /mcp     for Claude Code and friends
 └── static server       127.0.0.1:<random>   serves the built editor
         │
         └── BrowserWindow ── preload.cjs ── window.scratchAiDesktop.bridgeUrl
@@ -65,13 +65,58 @@ reject and which no CORS setting can allow. A real `http://127.0.0.1` origin can
 allowed — see the provider notes in
 [`@skieadmin/scratch-ai-bridge`](../scratch-ai-bridge/README.md).
 
+## Connecting an AI client
+
+The MCP endpoint is `http://127.0.0.1:8610/mcp` every time the app runs, so a client is registered once. For Claude
+Code:
+
+```sh
+claude mcp add --transport http scratch http://127.0.0.1:8610/mcp
+```
+
+**Help > Connect an AI client...** shows the endpoint, with buttons that copy that command or the URL. Any number of
+clients can be connected at the same time, and a client that restarts reconnects on its own.
+
+If port 8610 is taken when the app starts, by another copy of the app or another program, the endpoint moves to a free
+port for that run and the log says so; the Connect dialog shows the address in use. To use a different port for good,
+set `mcpPort` in `Documents/Scratch3_Config.json`:
+
+```json
+{
+  "mcpPort": 8620,
+  "mcpToken": "a-long-random-string"
+}
+```
+
+`mcpToken` is optional. When it is set, every MCP request must carry `Authorization: Bearer <token>`, and the command
+the Connect dialog copies includes that header. The editor's own settings screen saves to the same file and keeps
+both of these.
+
+While the app runs, `Documents/Skie AI Editor/mcp-endpoint.json` records where to find it, for tools that look the
+endpoint up rather than being told:
+
+```json
+{
+  "url": "http://127.0.0.1:8610/mcp",
+  "port": 8610,
+  "pid": 12345,
+  "startedAt": "2026-10-05T09:30:00.000Z"
+}
+```
+
+The file is removed when the app quits; `pid` tells a stale file, left by a crash, from a live one. The endpoint is
+also written to the app log at startup.
+
 ## Security
 
 - Both servers bind to `127.0.0.1`, never `0.0.0.0`.
-- Both take an OS-assigned port, so two copies of the app cannot collide, and neither
-  port is predictable.
-- The bridge generates a fresh token each launch and only accepts the window's own
+- The editor is served from an OS-assigned port. The MCP endpoint uses a fixed port so
+  clients can find it, and falls back to a free one rather than collide.
+- The bridge generates a fresh editor token each launch and only accepts the window's own
   origin, so another page on your machine cannot drive your editor.
+- The MCP endpoint only answers to `Host: 127.0.0.1:<port>` or `localhost:<port>`, which
+  stops DNS rebinding, and refuses any browser `Origin` but the editor's own. Set
+  `mcpToken` to also keep out other programs on your machine.
 - The window runs with `contextIsolation: true`, `nodeIntegration: false` and
   `sandbox: true`. The page gets the bridge URL through a preload script and has no
   other access to Node.

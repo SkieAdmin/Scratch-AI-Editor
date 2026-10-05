@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { isOriginAllowed, isTokenValid, verifyUpgrade, type UpgradePolicy } from '../src'
+import {
+  allowedMcpHosts,
+  isOriginAllowed,
+  isTokenValid,
+  verifyMcpRequest,
+  verifyUpgrade,
+  type McpRequestPolicy,
+  type UpgradePolicy,
+} from '../src'
 
 const TOKEN = 'e5f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4'
 
@@ -88,5 +96,71 @@ describe('verifyUpgrade', () => {
 
   it('refuses a request with no target at all', () => {
     expect(verifyUpgrade(undefined, 'http://localhost:8601', POLICY)).toMatchObject({ ok: false, status: 404 })
+  })
+})
+
+describe('allowedMcpHosts', () => {
+  it('answers to the loopback names this machine uses for itself', () => {
+    expect(allowedMcpHosts('127.0.0.1', 8610)).toEqual(['127.0.0.1:8610', 'localhost:8610'])
+  })
+
+  it('also answers to an address the operator bound explicitly', () => {
+    expect(allowedMcpHosts('192.168.1.5', 8610)).toContain('192.168.1.5:8610')
+    expect(allowedMcpHosts('::1', 8610)).toContain('[::1]:8610')
+  })
+
+  it('adds nothing for a wildcard bind, which is not a name anyone dials', () => {
+    expect(allowedMcpHosts('0.0.0.0', 8610)).toEqual(['127.0.0.1:8610', 'localhost:8610'])
+  })
+})
+
+describe('verifyMcpRequest', () => {
+  const MCP_POLICY: McpRequestPolicy = { allowedHosts: allowedMcpHosts('127.0.0.1', 8610), allowedOrigins: [] }
+
+  it('accepts a client such as Claude Code, which sends no Origin', () => {
+    expect(verifyMcpRequest({ host: '127.0.0.1:8610' }, MCP_POLICY)).toMatchObject({ ok: true })
+    expect(verifyMcpRequest({ host: 'LOCALHOST:8610' }, MCP_POLICY)).toMatchObject({ ok: true })
+  })
+
+  it('refuses a Host it does not answer to, which is what a DNS rebinding attack sends', () => {
+    expect(verifyMcpRequest({ host: 'evil.example:8610' }, MCP_POLICY)).toMatchObject({ ok: false, status: 403 })
+    expect(verifyMcpRequest({ host: '127.0.0.1:9999' }, MCP_POLICY)).toMatchObject({ ok: false, status: 403 })
+    expect(verifyMcpRequest({}, MCP_POLICY)).toMatchObject({ ok: false, status: 403 })
+  })
+
+  it("refuses a web page other than the editor's own", () => {
+    const own: McpRequestPolicy = { ...MCP_POLICY, allowedOrigins: ['http://127.0.0.1:5000'] }
+
+    expect(verifyMcpRequest({ host: '127.0.0.1:8610', origin: 'http://127.0.0.1:5000' }, own)).toMatchObject({
+      ok: true,
+    })
+    expect(verifyMcpRequest({ host: '127.0.0.1:8610', origin: 'https://evil.example' }, own)).toMatchObject({
+      ok: false,
+      status: 403,
+    })
+    expect(verifyMcpRequest({ host: '127.0.0.1:8610', origin: 'http://127.0.0.1:6000' }, own)).toMatchObject({
+      ok: false,
+      status: 403,
+    })
+  })
+
+  it('demands the bearer token when one is set', () => {
+    const guarded: McpRequestPolicy = { ...MCP_POLICY, token: TOKEN }
+
+    expect(verifyMcpRequest({ host: '127.0.0.1:8610' }, guarded)).toMatchObject({ ok: false, status: 401 })
+    expect(verifyMcpRequest({ host: '127.0.0.1:8610', authorization: 'Bearer guess' }, guarded)).toMatchObject({
+      ok: false,
+      status: 401,
+    })
+    expect(verifyMcpRequest({ host: '127.0.0.1:8610', authorization: TOKEN }, guarded)).toMatchObject({
+      ok: false,
+      status: 401,
+    })
+    expect(verifyMcpRequest({ host: '127.0.0.1:8610', authorization: `Bearer ${TOKEN}` }, guarded)).toMatchObject({
+      ok: true,
+    })
+    expect(verifyMcpRequest({ host: '127.0.0.1:8610', authorization: `bearer ${TOKEN}` }, guarded)).toMatchObject({
+      ok: true,
+    })
   })
 })

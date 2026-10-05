@@ -52,6 +52,7 @@ scratch-ai-bridge:   ws://127.0.0.1:8610/editor?token=6f1c…
 | `--token <secret>`        | generated   | Shared secret the editor must present                               |
 | `--allow-origin <origin>` | localhost   | Exact browser origin allowed to connect; repeatable                 |
 | `--mcp-http`              | off         | Also serve MCP over Streamable HTTP at `/mcp`                       |
+| `--mcp-token <secret>`    | none        | Bearer token MCP clients must send to `/mcp`                        |
 | `--no-mcp-stdio`          | stdio on    | Do not serve MCP over stdio                                         |
 | `--config <path>`         | —           | JSON config file                                                    |
 | `-h`, `--help`            | —           | Show usage                                                          |
@@ -63,6 +64,8 @@ scratch-ai-bridge:   ws://127.0.0.1:8610/editor?token=6f1c…
   "port": 8610,
   "token": "paste-a-long-random-string-here",
   "allowOrigin": ["http://localhost:8601"],
+  "mcpHttp": true,
+  "mcpToken": "another-long-random-string",
   "providers": {
     "deepseek": { "apiKey": "sk-…" },
     "openrouter": { "apiKey": "sk-or-…" },
@@ -108,8 +111,29 @@ startup is printed to stderr, where Claude Desktop hides it, and you need it to 
 Then open the Scratch editor, open the AI assistant's settings, and set the bridge URL to
 `ws://127.0.0.1:8610/editor?token=paste-a-long-random-string-here`.
 
-For a client that attaches to a URL instead of spawning a process, start the bridge with `--mcp-http` and point the
-client at `http://127.0.0.1:8610/mcp`.
+## Pointing Claude Code at it
+
+Claude Code, and any other client that attaches to a URL rather than spawning a process, talks to the bridge over
+Streamable HTTP. Start the bridge with `--mcp-http`, then register it once:
+
+```sh
+claude mcp add --transport http scratch http://127.0.0.1:8610/mcp
+```
+
+If you started the bridge with `--mcp-token`, send the token too:
+
+```sh
+claude mcp add --transport http scratch http://127.0.0.1:8610/mcp --header "Authorization: Bearer <token>"
+```
+
+Any number of clients can be connected at once. Each `initialize` opens its own session, and later requests are
+routed to it by their `Mcp-Session-Id` header. A client that restarts simply opens a new session. A session ends when
+its client sends `DELETE`, or after 30 minutes with no open request; a request naming a session that has ended gets
+HTTP 404, which tells the client to start a new one. Every session hears `notifications/tools/list_changed` when the
+editor announces a different set of tools.
+
+The desktop app serves the same endpoint on port 8610 without any of this setup; see
+[`@skieadmin/scratch-ai-desktop`](../scratch-ai-desktop/README.md).
 
 ## Pointing the editor at it
 
@@ -119,6 +143,60 @@ It reconnects on its own with exponential backoff, so the bridge and the editor 
 
 Only one editor may be attached at a time. A second connection is closed immediately with code `4001`, because a
 tool call names no editor and two attached editors would make "run this in Scratch" ambiguous.
+
+## Tools
+
+The editor announces its tools in its `hello`, and the bridge offers exactly those to MCP clients. Their schemas and
+descriptions live in
+[`scratch-gui/src/lib/ai/scratch-tools/definitions.js`](../scratch-gui/src/lib/ai/scratch-tools/definitions.js),
+shared with the editor's own assistant panel. Tools that take a `targetId` accept a sprite name, a target id or
+`"stage"`, and default to the sprite being edited.
+
+### Reading the project
+
+| Tool                  | What it does                                                                          |
+| --------------------- | ------------------------------------------------------------------------------------- |
+| `get_project_summary` | Sprites, variables, backdrop and costume counts, and the shape of every script        |
+| `get_target`          | One sprite or the stage in full, every script block by block                          |
+| `list_sprites`        | Sprite ids, names and positions                                                       |
+| `list_costumes`       | A target's costumes, in costume-tab order                                             |
+| `list_sounds`         | A target's sounds, in sound-tab order                                                 |
+| `list_variables`      | The variables and lists a target can see                                              |
+| `get_block_catalog`   | The opcodes available, with their inputs and fields; filter by `category` or `search` |
+| `search_library`      | Names in the sprite, costume, backdrop or sound library                               |
+
+### Changing the project
+
+| Tool                        | What it does                                           |
+| --------------------------- | ------------------------------------------------------ |
+| `add_sprite_from_library`   | Add a library sprite, optionally renamed and placed    |
+| `delete_sprite`             | Delete a sprite and its clones                         |
+| `rename_sprite`             | Rename a sprite                                        |
+| `set_sprite_properties`     | Move, turn, resize, show or hide a sprite              |
+| `add_costume_from_library`  | Add a library costume to a sprite or the stage         |
+| `add_backdrop_from_library` | Add a library backdrop and switch to it                |
+| `add_sound_from_library`    | Add a library sound                                    |
+| `set_variable`              | Set a variable or list, creating it if needed          |
+| `create_script`             | Build a stack of blocks; see below                     |
+| `delete_script`             | Delete a script by its top block's id                  |
+| `add_extension`             | Switch on `text2speech`, `music`, `pen` or `translate` |
+| `set_editing_target`        | Show a sprite or the stage in the editor               |
+
+`create_script` takes the blocks top to bottom, each as `{"opcode", "inputs", "fields"}`. An input is a number or
+string, a nested block spec for a reporter, an array of block specs for a C-block branch, or
+`{"shadow": "<opcode>", "value": ...}` to name the slot type. Menus work the way the dropdowns do: a plain string in a
+menu input picks that item, so `{"opcode": "looks_switchbackdropto", "inputs": {"BACKDROP": "Jungle"}}` builds the
+real _switch backdrop to [Jungle v]_ block. A menu can also be named outright, as
+`{"shadow": "looks_backdrops", "value": "Jungle"}`; its field is filled in for you. Every core menu is recognised, and
+an extension's menus (`pen_menu_colorParam` and so on) once the extension is loaded, which `create_script` does by
+itself.
+
+### Running the project
+
+| Tool         | What it does                             |
+| ------------ | ---------------------------------------- |
+| `green_flag` | Start the project                        |
+| `stop_all`   | Stop every script, as the stop sign does |
 
 ## Security model
 
@@ -134,6 +212,17 @@ drive the editor and spend the user's API credits. Three things prevent that:
   them back.
 - **Loopback binding.** The bridge binds `127.0.0.1` unless you override `--host`. It is never reachable from the
   network by default.
+
+The MCP endpoint at `/mcp` has checks of its own, made before the request body is read:
+
+- **Host allowlist.** A DNS rebinding attack points a hostile name at `127.0.0.1`, but the browser still sends that
+  name as `Host`. Only `127.0.0.1:<port>`, `localhost:<port>` and, when `--host` names one specific address, that
+  address are accepted; anything else gets HTTP 403. This is why the endpoint is reached by those names only.
+- **Origin check.** A request carrying an `Origin` must pass the same allowlist as the editor endpoint, so a web page
+  other than the editor gets HTTP 403. Claude Code and other non-browser clients send no `Origin`.
+- **Optional bearer token.** With `--mcp-token` (or `mcpToken` in the config file), every request must carry
+  `Authorization: Bearer <token>`, compared the same timing-safe way as the editor token; otherwise HTTP 401. Without
+  a token, any program on this machine can use the endpoint, which is no more than it could already do as you.
 
 Anyone who holds the token can drive your editor and spend your API credits. Treat it like a password.
 

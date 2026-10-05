@@ -1,4 +1,5 @@
 import {createToolRunner} from '../../../../../src/lib/ai/scratch-tools/runner';
+import {MENU_INPUTS, MENU_SHADOW_FIELDS} from '../../../../../src/lib/ai/scratch-tools/menus';
 
 // None of these assertions need a real toolbox, and loading scratch-blocks into jsdom
 // to produce one would be pure cost.
@@ -7,8 +8,17 @@ jest.mock('../../../../../src/lib/make-toolbox-xml', () => ({
     default: () => '<xml></xml>'
 }));
 
+// The same goes for the scratch-blocks registry. This stands in for it with a
+// block type that only scratch-blocks defines: the VM implements no primitive for it.
+jest.mock('../../../../../src/lib/ai/scratch-tools/block-definitions', () => ({
+    isScratchBlocksType: opcode => opcode === 'event_touchingobjectmenu'
+}));
+
 const HAT_OPCODES = ['event_whenflagclicked'];
-const PRIMITIVE_OPCODES = ['motion_movesteps', 'motion_turnright', 'looks_say', 'data_setvariableto', 'event_broadcast'];
+const PRIMITIVE_OPCODES = [
+    'motion_movesteps', 'motion_turnright', 'looks_say', 'data_setvariableto', 'event_broadcast',
+    ...Object.keys(MENU_INPUTS)
+];
 
 const makeBlocks = (records = {}) => {
     const blocks = {...records};
@@ -145,7 +155,9 @@ const makeVm = () => {
             getOpcodeFunction: opcode => (PRIMITIVE_OPCODES.includes(opcode) ? () => {} : undefined),
             getIsHat: opcode => HAT_OPCODES.includes(opcode),
             getBlocksXML: () => [],
-            emitProjectChanged: jest.fn()
+            emitProjectChanged: jest.fn(),
+            // Extension block and menu registrations; none are loaded to begin with.
+            _blockInfo: []
         },
         extensionManager: extensionManager(),
         emitTargetsUpdate: jest.fn(),
@@ -517,5 +529,168 @@ describe('unknown opcodes', () => {
             targetId: 'Cat',
             blocks: [{opcode: 'zzz_nonsense', inputs: {}}]
         })).rejects.toThrow(/get_block_catalog/);
+    });
+});
+
+describe('menu blocks', () => {
+    /**
+     * Build a one-block script under a green flag hat and return the records it created.
+     * @param {object} vm the fake vm
+     * @param {object} spec the block spec to build
+     * @param {string} [targetId] where to build it
+     * @returns {Promise<Array<object>>} the created block records, in creation order
+     */
+    const buildOne = async (vm, spec, targetId = 'Cat') => {
+        const {runTool} = createToolRunner(vm);
+        await runTool('create_script', {targetId, blocks: [{opcode: 'event_whenflagclicked'}, spec]});
+        const target = targetId === 'stage' ?
+            vm.runtime.getTargetForStage() :
+            vm.runtime.getSpriteTargetByName(targetId);
+        return target.blocks.createBlock.mock.calls.map(call => call[0]);
+    };
+
+    /**
+     * The shadow a built block holds in one of its inputs.
+     * @param {Array<object>} records the created block records
+     * @param {string} opcode the block that owns the input
+     * @param {string} inputName the input
+     * @returns {object} the shadow record
+     */
+    const shadowIn = (records, opcode, inputName) => {
+        const owner = records.find(record => record.opcode === opcode);
+        const input = owner.inputs[inputName];
+        expect(input.block).toBe(input.shadow);
+        return records.find(record => record.id === input.shadow);
+    };
+
+    /*
+     * Menus are shadow blocks that the VM implements no primitive for, so the
+     * opcode check rejected every one that did not happen to end in "_menu":
+     * "looks_backdrops" is not an opcode this project knows.
+     */
+    test('a backdrop menu named as a shadow builds the real dropdown', async () => {
+        const {vm} = makeVm();
+
+        const records = await buildOne(vm, {
+            opcode: 'looks_switchbackdropto',
+            inputs: {BACKDROP: {shadow: 'looks_backdrops', field: 'BACKDROP', value: 'Jungle'}}
+        }, 'stage');
+
+        const menu = shadowIn(records, 'looks_switchbackdropto', 'BACKDROP');
+        expect(menu.opcode).toBe('looks_backdrops');
+        expect(menu.shadow).toBe(true);
+        expect(menu.fields).toEqual({BACKDROP: {name: 'BACKDROP', value: 'Jungle'}});
+    });
+
+    test.each(Object.entries(MENU_SHADOW_FIELDS))('%s is accepted and keeps its choice in %s', async (menu, field) => {
+        const {vm} = makeVm();
+
+        const records = await buildOne(vm, {opcode: 'motion_goto', inputs: {TO: {shadow: menu, value: 'x'}}});
+
+        const shadow = shadowIn(records, 'motion_goto', 'TO');
+        expect(shadow.opcode).toBe(menu);
+        expect(shadow.fields[field].value).toBe('x');
+    });
+
+    const menuInputCases = Object.entries(MENU_INPUTS).flatMap(([opcode, inputs]) => Object.entries(inputs)
+        .map(([inputName, menu]) => [opcode, inputName, menu]));
+
+    test.each(menuInputCases)('a plain value in %s.%s chooses from %s', async (opcode, inputName, menu) => {
+        const {vm} = makeVm();
+
+        const records = await buildOne(vm, {opcode, inputs: {[inputName]: 'Jungle'}});
+
+        const shadow = shadowIn(records, opcode, inputName);
+        expect(shadow.opcode).toBe(menu);
+        expect(shadow.fields[MENU_SHADOW_FIELDS[menu]].value).toBe('Jungle');
+    });
+
+    test('a plain value in an ordinary input is still a literal', async () => {
+        const {vm} = makeVm();
+
+        const records = await buildOne(vm, {opcode: 'looks_say', inputs: {MESSAGE: 'Jungle'}});
+
+        expect(shadowIn(records, 'looks_say', 'MESSAGE').opcode).toBe('text');
+    });
+
+    test('a broadcast menu names its message and creates it when it is new', async () => {
+        const {stage, vm} = makeVm();
+
+        const records = await buildOne(vm, {opcode: 'event_broadcast', inputs: {BROADCAST_INPUT: 'go'}});
+
+        const field = shadowIn(records, 'event_broadcast', 'BROADCAST_INPUT').fields.BROADCAST_OPTION;
+        expect(stage.createVariable).toHaveBeenCalledWith(field.id, 'go', 'broadcast_msg');
+        expect(field).toMatchObject({value: 'go', variableType: 'broadcast_msg'});
+    });
+
+    test('an opcode that only scratch-blocks defines is accepted', async () => {
+        const {vm} = makeVm();
+
+        const records = await buildOne(vm, {
+            opcode: 'motion_goto',
+            inputs: {TO: {shadow: 'event_touchingobjectmenu', field: 'TOUCHINGOBJECTMENU', value: '_mouse_'}}
+        });
+
+        expect(shadowIn(records, 'motion_goto', 'TO').opcode).toBe('event_touchingobjectmenu');
+    });
+
+    test('a misspelt menu is still rejected', async () => {
+        const {vm} = makeVm();
+        const {runTool} = createToolRunner(vm);
+
+        await expect(runTool('create_script', {
+            targetId: 'stage',
+            blocks: [{
+                opcode: 'looks_switchbackdropto',
+                inputs: {BACKDROP: {shadow: 'looks_backdrop', value: 'Jungle'}}
+            }]
+        })).rejects.toThrow(/"looks_backdrop" is not an opcode/);
+    });
+
+    describe('from an extension', () => {
+        /**
+         * Register the pen extension's colour parameter block and its menu, as
+         * the runtime does when the extension loads.
+         * @param {object} vm the fake vm
+         */
+        const registerPen = vm => {
+            PRIMITIVE_OPCODES.push('pen_setPenColorParamTo');
+            vm.runtime._blockInfo.push({
+                id: 'pen',
+                blocks: [{
+                    json: {type: 'pen_setPenColorParamTo'},
+                    info: {arguments: {COLOR_PARAM: {type: 'string', menu: 'colorParam'}, VALUE: {type: 'number'}}}
+                }],
+                menus: [{json: {type: 'pen_menu_colorParam', args0: [{type: 'field_dropdown', name: 'colorParam'}]}}],
+                menuInfo: {colorParam: {acceptReporters: true, items: ['color', 'saturation']}}
+            });
+        };
+
+        test('a menu named as a shadow is accepted and its field found', async () => {
+            const {vm} = makeVm();
+            registerPen(vm);
+
+            const records = await buildOne(vm, {
+                opcode: 'pen_setPenColorParamTo',
+                inputs: {COLOR_PARAM: {shadow: 'pen_menu_colorParam', value: 'color'}, VALUE: 50}
+            });
+
+            const menu = shadowIn(records, 'pen_setPenColorParamTo', 'COLOR_PARAM');
+            expect(menu.opcode).toBe('pen_menu_colorParam');
+            expect(menu.fields).toEqual({colorParam: {name: 'colorParam', value: 'color'}});
+        });
+
+        test('a plain value in a menu input chooses from the menu', async () => {
+            const {vm} = makeVm();
+            registerPen(vm);
+
+            const records = await buildOne(vm, {
+                opcode: 'pen_setPenColorParamTo',
+                inputs: {COLOR_PARAM: 'saturation', VALUE: 50}
+            });
+
+            expect(shadowIn(records, 'pen_setPenColorParamTo', 'COLOR_PARAM').opcode).toBe('pen_menu_colorParam');
+            expect(shadowIn(records, 'pen_setPenColorParamTo', 'VALUE').opcode).toBe('math_number');
+        });
     });
 });

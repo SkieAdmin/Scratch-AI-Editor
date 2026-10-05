@@ -2,16 +2,13 @@ import { randomBytes } from 'node:crypto'
 import { createServer, type IncomingMessage, type Server as HttpServer, type ServerResponse } from 'node:http'
 import type { Server as McpSdkServer } from '@modelcontextprotocol/sdk/server/index.js'
 import { resolveProviderSettings, type BridgeConfigFile } from './config'
+import { allowedMcpHosts, verifyMcpRequest, type McpRequestPolicy } from './hub/auth'
 import { EditorHub, type ChatRequestEnvelope, type ChatResponder, type ModelsResponder } from './hub/editor-hub'
 import { attachEditorWebSocket } from './hub/ws-server'
 import { log } from './log'
-import {
-  createMcpServer,
-  describeError,
-  notifyToolListChanged,
-  serveMcpOverHttp,
-  serveMcpOverStdio,
-} from './mcp/server'
+import { writeJsonRpcError } from './mcp/http-errors'
+import { McpHttpSessions } from './mcp/http-sessions'
+import { createMcpServer, describeError, notifyToolListChanged, serveMcpOverStdio } from './mcp/server'
 import { createProvider, isProviderId, type ProviderContext } from './providers'
 import { listModels, streamChat } from './providers/openai-compatible'
 
@@ -37,6 +34,9 @@ const DEFAULT_OPENROUTER_TITLE = 'Skie AI Editor'
 /** Bytes of entropy in a generated token. */
 const TOKEN_BYTES = 24
 
+/** Bind addresses that listen on every interface, which no client can dial as such. */
+const WILDCARD_HOSTS = new Set(['0.0.0.0', '::'])
+
 /** How to start the bridge. */
 export interface BridgeOptions {
   port?: number
@@ -47,6 +47,8 @@ export interface BridgeOptions {
   allowedOrigins?: string[]
   /** Also serve MCP over Streamable HTTP at `/mcp`. */
   mcpHttp?: boolean
+  /** Bearer token MCP clients must send to `/mcp`; none is required when omitted. */
+  mcpToken?: string
   /** Serve MCP over stdio, so a client can spawn the bridge. */
   mcpStdio?: boolean
   /** Contents of the operator's config file. */
@@ -82,6 +84,7 @@ export async function startBridge(options: BridgeOptions = {}): Promise<RunningB
   const token = options.token ?? config.token ?? randomBytes(TOKEN_BYTES).toString('hex')
   const allowedOrigins = options.allowedOrigins ?? config.allowOrigin ?? []
   const serveHttpMcp = options.mcpHttp ?? config.mcpHttp ?? false
+  const mcpToken = options.mcpToken ?? config.mcpToken
   const version = options.version ?? '0.0.0'
 
   const providerContext: ProviderContext = {
@@ -90,7 +93,10 @@ export async function startBridge(options: BridgeOptions = {}): Promise<RunningB
     openRouterTitle: config.openRouter?.title ?? DEFAULT_OPENROUTER_TITLE,
   }
 
-  const mcpServers: McpSdkServer[] = []
+  // Set once their transports exist. The hub announces tool changes to
+  // whichever MCP servers are live at the time.
+  let stdioServer: McpSdkServer | null = null
+  let mcpSessions: McpHttpSessions | null = null
 
   // Lets a `chat-cancel` stop the provider request the editor no longer wants.
   const inFlightChats = new Map<string, AbortController>()
@@ -99,7 +105,7 @@ export async function startBridge(options: BridgeOptions = {}): Promise<RunningB
     invokeTimeoutMs: options.invokeTimeoutMs,
     onToolsChanged: (tools) => {
       log(`the editor announced ${tools.length} tools`)
-      notifyToolListChanged(mcpServers)
+      notifyToolListChanged([...(stdioServer ? [stdioServer] : []), ...(mcpSessions?.servers ?? [])])
     },
     onDetach: () => {
       log('the editor disconnected')
@@ -124,9 +130,20 @@ export async function startBridge(options: BridgeOptions = {}): Promise<RunningB
   const httpServer = createServer()
   const wss = attachEditorWebSocket(httpServer, hub, { token, allowedOrigins, path: EDITOR_PATH })
 
-  const httpTransport = serveHttpMcp ? await serveMcpOverHttp(pushServer(mcpServers, hub, version)) : null
+  mcpSessions = serveHttpMcp
+    ? new McpHttpSessions({
+        createServer: () => createMcpServer(hub, version),
+        onSessionsChanged: (event, sessionId, openSessions) => {
+          log(`MCP session ${sessionId} ${event} (${openSessions} open)`)
+        },
+      })
+    : null
+
+  // The allowed Host values name the port, which is only known once listening.
+  let mcpPolicy: McpRequestPolicy | null = null
+
   httpServer.on('request', (request, response) => {
-    handleHttpRequest(request, response, httpTransport).catch((error: unknown) => {
+    handleHttpRequest(request, response, mcpSessions, mcpPolicy).catch((error: unknown) => {
       // An HTTP client is outside the trust boundary, so a malformed body is
       // its mistake to hear about, not a reason to take the bridge down.
       const message = describeError(error)
@@ -138,17 +155,32 @@ export async function startBridge(options: BridgeOptions = {}): Promise<RunningB
     })
   })
 
-  const stdioTransport = options.mcpStdio ? await serveMcpOverStdio(pushServer(mcpServers, hub, version)) : null
-
-  await new Promise<void>((resolve) => httpServer.listen(port, host, resolve))
+  try {
+    await listen(httpServer, port, host)
+  } catch (error) {
+    // A bridge that never came up must not leave a timer or socket behind,
+    // or a caller that retries on another port would leak this attempt.
+    hub.close()
+    wss.close()
+    await mcpSessions?.close()
+    throw error
+  }
   const boundPort = resolvePort(httpServer, port)
+  mcpPolicy = { allowedHosts: allowedMcpHosts(host, boundPort), allowedOrigins, token: mcpToken }
+
+  stdioServer = options.mcpStdio ? createMcpServer(hub, version) : null
+  const stdioTransport = stdioServer ? await serveMcpOverStdio(stdioServer) : null
+
+  // A wildcard bind is not an address a client can dial, and the MCP endpoint
+  // only answers to the names in its Host allowlist.
+  const mcpHost = WILDCARD_HOSTS.has(host) ? DEFAULT_HOST : host
 
   return {
     port: boundPort,
     host,
     token,
     editorUrl: `ws://${host}:${boundPort}${EDITOR_PATH}?token=${token}`,
-    mcpHttpUrl: httpTransport ? `http://${host}:${boundPort}${MCP_PATH}` : null,
+    mcpHttpUrl: mcpSessions ? `http://${mcpHost}:${boundPort}${MCP_PATH}` : null,
     hub,
     async close() {
       hub.close()
@@ -161,7 +193,8 @@ export async function startBridge(options: BridgeOptions = {}): Promise<RunningB
       }
       wss.close()
 
-      await Promise.all(mcpServers.map((server) => server.close()))
+      await mcpSessions?.close()
+      await stdioServer?.close()
       await stdioTransport?.close()
 
       httpServer.closeAllConnections()
@@ -173,36 +206,37 @@ export async function startBridge(options: BridgeOptions = {}): Promise<RunningB
 }
 
 /**
- * Build an MCP server and remember it, so tool-list changes reach every transport.
- * @param servers the list of live servers
- * @param hub the hub to forward tool calls to
- * @param version the bridge's version
- * @returns the new server
+ * Start listening, failing when the port cannot be bound rather than waiting
+ * for a `listening` event that will never come.
+ * @param server the server to start
+ * @param port the port to bind, or 0 for any free one
+ * @param host the address to bind
  */
-function pushServer(servers: McpSdkServer[], hub: EditorHub, version: string): McpSdkServer {
-  const server = createMcpServer(hub, version)
-  servers.push(server)
-  return server
-}
-
-/** The subset of the Streamable HTTP transport this module drives. */
-interface HttpMcpTransport {
-  handleRequest(request: IncomingMessage, response: ServerResponse, body?: unknown): Promise<void>
+async function listen(server: HttpServer, port: number, host: string): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(port, host, () => {
+      server.off('error', reject)
+      resolve()
+    })
+  })
 }
 
 /**
- * Route plain HTTP requests: MCP traffic to the Streamable HTTP transport, and a
- * health probe the editor can use to tell "bridge is down" from "token is wrong".
+ * Route plain HTTP requests: MCP traffic to its client's session, and a health
+ * probe the editor can use to tell "bridge is down" from "token is wrong".
  * @param request the incoming request
  * @param response the response to write
- * @param transport the MCP transport, or null when HTTP MCP is off
+ * @param sessions the MCP sessions, or null when HTTP MCP is off
+ * @param policy who may reach the MCP endpoint, or null before the bridge is listening
  */
 async function handleHttpRequest(
   request: IncomingMessage,
   response: ServerResponse,
-  transport: HttpMcpTransport | null,
+  sessions: McpHttpSessions | null,
+  policy: McpRequestPolicy | null,
 ): Promise<void> {
-  const path = new URL(request.url ?? '/', `http://${request.headers.host ?? DEFAULT_HOST}`).pathname
+  const path = new URL(request.url ?? '/', `http://${DEFAULT_HOST}`).pathname
 
   if (path === '/health') {
     response.writeHead(200, { 'Content-Type': 'application/json' })
@@ -210,13 +244,23 @@ async function handleHttpRequest(
     return
   }
 
-  if (path !== MCP_PATH || !transport) {
+  if (path !== MCP_PATH || !sessions || !policy) {
     response.writeHead(404, { 'Content-Type': 'text/plain' })
     response.end(`This bridge serves no endpoint at ${path}.`)
     return
   }
 
-  await transport.handleRequest(request, response, await readJsonBody(request))
+  // Checked before the body is read, so a refused request costs nothing to refuse.
+  const verdict = verifyMcpRequest(request.headers, policy)
+  if (!verdict.ok) {
+    log(`refused an MCP request (${verdict.status}): ${verdict.message}`)
+    const challenge: Record<string, string> =
+      verdict.status === 401 ? { 'WWW-Authenticate': 'Bearer realm="scratch-ai-bridge"' } : {}
+    writeJsonRpcError(response, verdict.status, -32000, verdict.message, challenge)
+    return
+  }
+
+  await sessions.handleRequest(request, response, await readJsonBody(request))
 }
 
 /**

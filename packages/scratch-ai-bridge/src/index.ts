@@ -8,7 +8,17 @@ export {
   type RunningBridge,
 } from './bridge'
 export { readConfigFile, resolveProviderSettings, type BridgeConfigFile } from './config'
-export { isOriginAllowed, isTokenValid, verifyUpgrade, type UpgradePolicy, type UpgradeVerdict } from './hub/auth'
+export {
+  allowedMcpHosts,
+  isOriginAllowed,
+  isTokenValid,
+  verifyMcpRequest,
+  verifyUpgrade,
+  type McpRequestPolicy,
+  type RequestVerdict,
+  type UpgradePolicy,
+  type UpgradeVerdict,
+} from './hub/auth'
 export {
   CLOSE_CODES,
   EDITOR_NOT_CONNECTED,
@@ -21,6 +31,7 @@ export {
   type ModelsResponder,
 } from './hub/editor-hub'
 export { attachEditorWebSocket } from './hub/ws-server'
+export { DEFAULT_IDLE_TIMEOUT_MS, McpHttpSessions, type McpHttpSessionsOptions } from './mcp/http-sessions'
 export {
   MCP_SERVER_NAME,
   createMcpServer,

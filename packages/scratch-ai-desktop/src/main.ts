@@ -1,9 +1,33 @@
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { startBridge, type RunningBridge } from '@skieadmin/scratch-ai-bridge'
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
-import { configPath, readConfig, writeConfig, type StoredConfig } from './config-store.ts'
+import {
+  app,
+  BrowserWindow,
+  clipboard,
+  dialog,
+  ipcMain,
+  Menu,
+  shell,
+  type BaseWindow,
+  type MessageBoxOptions,
+} from 'electron'
+import {
+  configPath,
+  keepShellSettings,
+  readConfig,
+  resolveMcpPort,
+  writeConfig,
+  type StoredConfig,
+} from './config-store.ts'
 import { createLogger, type LogLevel, type Logger } from './logger.ts'
+import {
+  claudeMcpAddCommand,
+  discoveryFilePath,
+  removeDiscoveryFile,
+  startOnPreferredPort,
+  writeDiscoveryFile,
+} from './mcp-endpoint.ts'
 import { startRendererServer, type RendererServer } from './renderer-server.ts'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -22,7 +46,14 @@ const RENDERER_ROOT = join(HERE, '..', 'renderer')
 let bridge: RunningBridge | null = null
 let renderer: RendererServer | null = null
 let settingsPath = ''
+let discoveryPath = ''
 let logger: Logger | null = null
+
+/** The bearer token MCP clients must send, from the settings file, if one is set. */
+let mcpToken: string | undefined
+
+/** The port the settings asked for, when it was taken and the endpoint moved to another. */
+let busyMcpPort: number | null = null
 
 /**
  * Start the MCP bridge and the loopback server that hosts the editor.
@@ -37,6 +68,7 @@ async function startServices(): Promise<string> {
   logger.log('Information', `Skie AI Editor ${app.getVersion()} starting`)
 
   settingsPath = configPath(app.getPath('documents'))
+  discoveryPath = discoveryFilePath(app.getPath('documents'))
 
   // The renderer asks for the saved settings synchronously while its store is
   // being built, so this cannot be a promise-returning channel.
@@ -44,30 +76,105 @@ async function startServices(): Promise<string> {
     event.returnValue = readConfig(settingsPath)
   })
   ipcMain.handle('scratch-ai:write-config', (_event, config: StoredConfig) => {
-    writeConfig(settingsPath, config)
+    writeConfig(settingsPath, keepShellSettings(readConfig(settingsPath), config))
   })
   ipcMain.on('scratch-ai:log', (_event, level: LogLevel, message: string) => {
     logger?.log(level, message)
   })
 
   renderer = await startRendererServer(RENDERER_ROOT, LOOPBACK)
+  const rendererOrigin = renderer.origin
 
-  bridge = await startBridge({
-    host: LOOPBACK,
-    // Port 0 asks the OS for a free port, so a second copy of the app and a
-    // separately-run bridge cannot collide.
-    port: 0,
-    // Only this app's own window may drive the editor.
-    allowedOrigins: [renderer.origin],
-    mcpHttp: true,
-    version: app.getVersion(),
-  })
+  const settings = readConfig(settingsPath)
+  mcpToken = settings.mcpToken
+  const mcpPort = resolveMcpPort(settings, (message) => logger?.log('Warning', message))
+
+  bridge = await startOnPreferredPort(
+    (port) =>
+      startBridge({
+        host: LOOPBACK,
+        port,
+        // Only this app's own window may drive the editor.
+        allowedOrigins: [rendererOrigin],
+        mcpHttp: true,
+        mcpToken,
+        version: app.getVersion(),
+      }),
+    mcpPort,
+    (port) => {
+      busyMcpPort = port
+      logger?.log(
+        'Warning',
+        `Port ${port} is already in use, so the MCP endpoint is on a random port until the app restarts. ` +
+          `Close whatever holds port ${port}, or set mcpPort in ${settingsPath}.`,
+      )
+    },
+  )
+  announceMcpEndpoint(bridge)
 
   const target = new URL(renderer.origin)
   // The page reads these back through the preload bridge; they are not secrets
   // to the page itself, which is the only origin allowed to use them.
   target.searchParams.set('aiBridge', bridge.editorUrl)
   return target.toString()
+}
+
+/**
+ * Log the MCP endpoint and write the discovery file, so a client can be
+ * pointed at it without the user having to look it up.
+ * @param running the started bridge
+ */
+function announceMcpEndpoint(running: RunningBridge): void {
+  const url = running.mcpHttpUrl
+  if (url === null) throw new Error('announceMcpEndpoint: the bridge was started without its MCP endpoint')
+
+  logger?.log('Information', `MCP endpoint: ${url}`)
+  try {
+    writeDiscoveryFile(discoveryPath, {
+      url,
+      port: running.port,
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+    })
+  } catch (error) {
+    // Discovery is a convenience; the endpoint works without the file.
+    logger?.log(
+      'Warning',
+      `Could not write ${discoveryPath}: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+}
+
+/**
+ * Show the MCP endpoint, with buttons that copy what a client needs.
+ * @param window the window to attach the dialog to, if there is one
+ */
+async function showConnectDialog(window: BaseWindow | undefined): Promise<void> {
+  const url = bridge?.mcpHttpUrl
+  // Nothing to connect to while the app is starting up or shutting down.
+  if (!url) return
+
+  const command = claudeMcpAddCommand(url, mcpToken)
+  const moved =
+    busyMcpPort === null
+      ? ''
+      : `\n\nPort ${busyMcpPort} was in use when the app started, so this address changes after a restart.`
+  const options: MessageBoxOptions = {
+    type: 'info',
+    title: 'Connect an AI client',
+    message: `The editor's MCP endpoint is ${url}`,
+    detail:
+      `To drive this editor from Claude Code, run:\n\n${command}\n\n` +
+      `Other MCP clients connect to the same address over Streamable HTTP.${moved}`,
+    buttons: ['Copy command', 'Copy URL', 'Close'],
+    defaultId: 0,
+    cancelId: 2,
+    noLink: true,
+  }
+
+  const { response } = window ? await dialog.showMessageBox(window, options) : await dialog.showMessageBox(options)
+  if (response === 0) clipboard.writeText(command)
+  if (response === 1) clipboard.writeText(url)
 }
 
 /**
@@ -111,6 +218,11 @@ function buildMenu(): void {
       {
         label: '&Help',
         submenu: [
+          {
+            label: 'Connect an AI client...',
+            click: (_item, window) => void showConnectDialog(window),
+          },
+          { type: 'separator' },
           {
             label: 'Open logs folder',
             click: () => {
@@ -178,6 +290,14 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   logger?.log('Information', 'Skie AI Editor shutting down')
+  try {
+    removeDiscoveryFile(discoveryPath, process.pid)
+  } catch (error) {
+    logger?.log(
+      'Warning',
+      `Could not remove ${discoveryPath}: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
   void stopServices()
 
   // A socket that refuses to close must not strand the user in an app that

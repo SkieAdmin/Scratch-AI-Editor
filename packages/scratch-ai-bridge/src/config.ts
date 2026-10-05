@@ -8,6 +8,8 @@ export interface BridgeConfigFile {
   token?: string
   allowOrigin?: string[]
   mcpHttp?: boolean
+  /** Bearer token MCP clients must send to `/mcp`. */
+  mcpToken?: string
   providers?: Partial<Record<ProviderId, { apiKey?: string; baseUrl?: string }>>
   openRouter?: { referer?: string; title?: string }
 }

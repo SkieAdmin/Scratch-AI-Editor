@@ -16,9 +16,10 @@ const blockSpecDescription =
     'A block is {"opcode": "motion_movesteps", "inputs": {...}, "fields": {...}}. An input value is ' +
     'a number or string literal, an array of block specs for a C-block branch, a nested block spec ' +
     '{"opcode": ...} to drop a reporter into the slot, or {"shadow": "<opcode>", "value": <literal>} ' +
-    'to choose the slot type explicitly. A field value is a plain string; VARIABLE, LIST and ' +
-    'BROADCAST_OPTION fields are resolved by name against the target. Call get_block_catalog for the ' +
-    'input and field names of an opcode.';
+    'to choose the slot type explicitly. In a menu input, such as BACKDROP of looks_switchbackdropto ' +
+    'or TO of motion_goto, a plain string picks that item from the dropdown. A field value is a plain ' +
+    'string; VARIABLE, LIST and BROADCAST_OPTION fields are resolved by name against the target. Call ' +
+    'get_block_catalog for the input and field names of an opcode.';
 
 const TOOL_DEFINITIONS = [
     {
