@@ -45,7 +45,8 @@ describe('set_block_input', () => {
 
         const result = await runTool('set_block_input', {targetId: 'Cat', blockId: 'move1', input: 'STEPS', value: 25});
 
-        expect(sprite.blocks.changeBlock).toHaveBeenCalledWith({element: 'field', id: 'literal1', name: 'NUM', value: '25'});
+        expect(sprite.blocks.changeBlock)
+            .toHaveBeenCalledWith({element: 'field', id: 'literal1', name: 'NUM', value: '25'});
         expect(sprite.blocks.getBlock('literal1').fields.NUM.value).toBe('25');
         expect(result).toEqual({targetId: 'sprite-id', blockId: 'move1', input: 'STEPS', value: '25'});
         expect(vm.refreshWorkspace).toHaveBeenCalled();
@@ -169,7 +170,8 @@ describe('set_block_input', () => {
 
         await expect(runTool('set_block_input', {targetId: 'Cat', blockId: 'move1', value: 1}))
             .rejects.toThrow(/Name the "input" or the "field"/);
-        await expect(runTool('set_block_input', {targetId: 'Cat', blockId: 'move1', input: 'STEPS', field: 'X', value: 1}))
+        const both = {targetId: 'Cat', blockId: 'move1', input: 'STEPS', field: 'X', value: 1};
+        await expect(runTool('set_block_input', both))
             .rejects.toThrow(/not both/);
         await expect(runTool('set_block_input', {targetId: 'Cat', blockId: 'nope', input: 'STEPS', value: 1}))
             .rejects.toThrow(/no block "nope"/);
@@ -219,7 +221,12 @@ describe('copy_script_to', () => {
         const [shared, toId, fromId] = vm.shareBlocksToTarget.mock.calls[0];
         expect(shared.map(block => block.id)).toEqual(['top1', 'move1', 'literal1']);
         expect([toId, fromId]).toEqual(['stage-id', 'sprite-id']);
-        expect(result).toEqual({fromTargetId: 'sprite-id', toTargetId: 'stage-id', topBlockId: 'top1-copy', blockCount: 3});
+        expect(result).toEqual({
+            fromTargetId: 'sprite-id',
+            toTargetId: 'stage-id',
+            topBlockId: 'top1-copy',
+            blockCount: 3
+        });
         expect(stage.blocks.getScripts()).toEqual(['top1-copy']);
         expect(sprite.blocks.getScripts()).toEqual(['top1']);
     });

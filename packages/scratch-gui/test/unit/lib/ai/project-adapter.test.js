@@ -131,7 +131,8 @@ describe('createProjectAdapter', () => {
         const vm = {loadProject: jest.fn(() => Promise.reject('{"validationError":"bad zip"}'))};
         const project = createProjectAdapter(store, vm);
 
-        await expect(project.load(new ArrayBuffer(4), 'Broken')).rejects.toThrow(/could not open that project.*bad zip/);
+        await expect(project.load(new ArrayBuffer(4), 'Broken'))
+            .rejects.toThrow(/could not open that project.*bad zip/);
 
         const gui = store.getState().scratchGui;
         expect(gui.projectState.loadingState).toBe(LoadingState.SHOWING_WITHOUT_ID);

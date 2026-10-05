@@ -38,13 +38,20 @@ const svgProperty = {
 };
 
 const blockSpecDescription =
-    'A block is {"opcode": "motion_movesteps", "inputs": {...}, "fields": {...}}. An input value is ' +
-    'a number or string literal, an array of block specs for a C-block branch, a nested block spec ' +
-    '{"opcode": ...} to drop a reporter into the slot, or {"shadow": "<opcode>", "value": <literal>} ' +
-    'to choose the slot type explicitly. In a menu input, such as BACKDROP of looks_switchbackdropto ' +
+    'A block is {"opcode": "motion_movesteps", "inputs": {...}, "fields": {...}}; get_block_catalog ' +
+    'lists the inputs and fields of each opcode. An input value is one of: a number or string literal; ' +
+    'a nested block spec {"opcode": ...}, which drops a reporter into the slot and is how a boolean ' +
+    'input such as CONDITION is filled; an array of block specs for a C-block branch, SUBSTACK for the ' +
+    'first and SUBSTACK2 for the "else" of control_if_else; or {"shadow": "<opcode>", "value": ' +
+    '<literal>} to choose the slot type. In a menu input, such as BACKDROP of looks_switchbackdropto ' +
     'or TO of motion_goto, a plain string picks that item from the dropdown. A field value is a plain ' +
-    'string; VARIABLE, LIST and BROADCAST_OPTION fields are resolved by name against the target. Call ' +
-    'get_block_catalog for the input and field names of an opcode.';
+    'string, on hat blocks too: {"opcode": "event_whenkeypressed", "fields": {"KEY_OPTION": "space"}} ' +
+    'or {"opcode": "event_whenbackdropswitchesto", "fields": {"BACKDROP": "Woods"}}. VARIABLE, LIST and ' +
+    'BROADCAST_OPTION fields are resolved by name against the target, and a broadcast message that ' +
+    'does not exist yet is created. Example: [{"opcode": "event_whenflagclicked"}, {"opcode": ' +
+    '"control_if_else", "inputs": {"CONDITION": {"opcode": "sensing_keypressed", "inputs": ' +
+    '{"KEY_OPTION": "space"}}, "SUBSTACK": [{"opcode": "looks_say", "inputs": {"MESSAGE": "Hi"}}], ' +
+    '"SUBSTACK2": [{"opcode": "motion_movesteps", "inputs": {"STEPS": 10}}]}}].';
 
 const TOOL_DEFINITIONS = [
     {
@@ -106,8 +113,13 @@ const TOOL_DEFINITIONS = [
     },
     {
         name: 'get_block_catalog',
-        description: 'List the opcodes available in this project and the inputs and fields each one ' +
-            'takes, including any loaded extensions. Filter it: the unfiltered catalogue is large.',
+        description: 'List the opcodes available on a target and the inputs and fields each one takes, ' +
+            'including any loaded extensions. Each input has a kind: "value" takes a number or string ' +
+            '(its shadow names the slot type), "boolean" takes a condition block, "branch" takes an array ' +
+            'of blocks inside a C-block, and "menu" takes one of its options as a plain string. Dropdown ' +
+            'fields list their options, and menus that depend on the project, such as costumes, ' +
+            'backdrops, sounds, other sprites and variables, list what is there now; optionLabels says ' +
+            'what a special option such as "_mouse_" means. Filter it: the unfiltered catalogue is large.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -294,7 +306,9 @@ const TOOL_DEFINITIONS = [
         name: 'search_library',
         description: 'List or search the names in a Scratch asset library. Library names are exact and ' +
             'case-sensitive, and the library is smaller than you expect, so search here before calling ' +
-            'add_sprite_from_library or the other add_*_from_library tools instead of guessing a name.',
+            'add_sprite_from_library or the other add_*_from_library tools instead of guessing a name. ' +
+            'Names come a page at a time: total is how many match, and nextOffset, unless it is null, ' +
+            'is the offset to ask for to get the next page.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -306,6 +320,17 @@ const TOOL_DEFINITIONS = [
                 query: {
                     type: 'string',
                     description: 'Part of a name to match, case-insensitive. Omit to list from the start.'
+                },
+                offset: {
+                    type: 'integer',
+                    minimum: 0,
+                    description: 'How many matching names to skip. Defaults to 0.'
+                },
+                limit: {
+                    type: 'integer',
+                    minimum: 1,
+                    maximum: 200,
+                    description: 'How many names to return. Defaults to 60.'
                 }
             },
             required: ['kind'],

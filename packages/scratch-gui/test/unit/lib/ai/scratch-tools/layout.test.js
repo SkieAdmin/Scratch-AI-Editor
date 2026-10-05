@@ -62,7 +62,13 @@ describe('cleanUpLayout', () => {
 
     test('counts both branches of an if-else, and gives an empty branch some room', () => {
         const ifElse = cleanUpLayout(blocksOf([
-            {id: 'if', opcode: 'control_if_else', x: 0, y: 0, inputs: {SUBSTACK: {block: null}, SUBSTACK2: {block: null}}},
+            {
+                id: 'if',
+                opcode: 'control_if_else',
+                x: 0,
+                y: 0,
+                inputs: {SUBSTACK: {block: null}, SUBSTACK2: {block: null}}
+            },
             {id: 'next', opcode: 'motion_movesteps', x: 0, y: 10}
         ]), isHat);
         const plain = cleanUpLayout(blocksOf([

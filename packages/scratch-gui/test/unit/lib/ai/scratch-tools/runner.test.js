@@ -341,6 +341,44 @@ describe('search_library', () => {
 
         await expect(runTool('search_library', {kind: 'wallpaper'})).rejects.toThrow(/is not a library/);
     });
+
+    /*
+     * A long library came back as its first 60 names and "truncated": true,
+     * with no way to see the rest.
+     */
+    test('pages through every match, saying where the next page starts', async () => {
+        const {vm} = makeVm();
+        const {runTool} = createToolRunner(vm);
+
+        const everything = await runTool('search_library', {kind: 'sprite', limit: 200});
+        const first = await runTool('search_library', {kind: 'sprite', limit: 25});
+        const second = await runTool('search_library', {kind: 'sprite', offset: first.nextOffset, limit: 25});
+
+        expect(first.total).toBe(everything.total);
+        expect(first.matches).toEqual(everything.matches.slice(0, 25));
+        expect(first.nextOffset).toBe(25);
+        expect(second.offset).toBe(25);
+        expect(second.matches).toEqual(everything.matches.slice(25, 50));
+    });
+
+    test('says when a page is the last', async () => {
+        const {vm} = makeVm();
+        const {runTool} = createToolRunner(vm);
+
+        const result = await runTool('search_library', {kind: 'sprite', query: 'cat'});
+
+        expect(result.total).toBe(result.matches.length);
+        expect(result.nextOffset).toBeNull();
+    });
+
+    test('refuses a page that cannot exist', async () => {
+        const {vm} = makeVm();
+        const {runTool} = createToolRunner(vm);
+
+        await expect(runTool('search_library', {kind: 'sprite', offset: -1})).rejects.toThrow(/"offset"/);
+        await expect(runTool('search_library', {kind: 'sprite', limit: 0})).rejects.toThrow(/from 1 to 200/);
+        await expect(runTool('search_library', {kind: 'sprite', limit: 500})).rejects.toThrow(/from 1 to 200/);
+    });
 });
 
 describe('unknown opcodes', () => {

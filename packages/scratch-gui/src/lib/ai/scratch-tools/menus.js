@@ -44,6 +44,76 @@ const MENU_INPUTS = {
     sound_playuntildone: {SOUND_MENU: 'sound_sounds_menu'}
 };
 
+/** Menu items that stand for something other than their own name, and what the dropdown shows for them. */
+const SPECIAL_ITEM_LABELS = {
+    _edge_: 'edge',
+    _mouse_: 'mouse-pointer',
+    _myself_: 'myself',
+    _random_: 'random position',
+    _stage_: 'Stage'
+};
+
+/** What the "of" block can read from a sprite, and from the stage. */
+const SENSING_OF_PROPERTIES = [
+    'x position', 'y position', 'direction', 'costume #', 'costume name', 'size', 'volume',
+    'backdrop #', 'backdrop name'
+];
+
+const namesOf = items => items.map(item => item.name);
+
+/**
+ * The other sprites a menu can name: every sprite but the one the script is on,
+ * as the editor lists them.
+ * @param {object} vm the VirtualMachine
+ * @param {object} target the target the script is on
+ * @returns {Array<string>} the sprite names
+ */
+const otherSprites = (vm, target) => vm.runtime.targets
+    .filter(candidate => candidate.isOriginal && !candidate.isStage && candidate.id !== target.id)
+    .map(candidate => candidate.getName());
+
+/**
+ * Menus whose items depend on the project, keyed by menu opcode, or by
+ * `opcode.FIELD` for a dropdown on the block itself. These are the same lists
+ * the editor builds in lib/blocks.js each time one of these menus opens.
+ */
+const PROJECT_MENUS = {
+    'control_create_clone_of_menu': (vm, target) =>
+        (target.isStage ? [] : ['_myself_']).concat(otherSprites(vm, target)),
+    'event_whenbackdropswitchesto.BACKDROP': vm => namesOf(vm.runtime.getTargetForStage().getCostumes()),
+    'looks_backdrops': vm => namesOf(vm.runtime.getTargetForStage().getCostumes())
+        .concat(['next backdrop', 'previous backdrop', 'random backdrop']),
+    'looks_costume': (vm, target) => namesOf(target.getCostumes()),
+    'motion_glideto_menu': (vm, target) => ['_random_', '_mouse_'].concat(otherSprites(vm, target)),
+    'motion_goto_menu': (vm, target) => ['_random_', '_mouse_'].concat(otherSprites(vm, target)),
+    'motion_pointtowards_menu': (vm, target) => ['_mouse_'].concat(otherSprites(vm, target)),
+    'sensing_distancetomenu': (vm, target) => ['_mouse_'].concat(otherSprites(vm, target)),
+    'sensing_of.PROPERTY': () => SENSING_OF_PROPERTIES,
+    'sensing_of_object_menu': (vm, target) => ['_stage_'].concat(otherSprites(vm, target)),
+    'sensing_touchingobjectmenu': (vm, target) => ['_mouse_', '_edge_'].concat(otherSprites(vm, target)),
+    'sound_sounds_menu': (vm, target) => namesOf(target.getSounds())
+};
+
+/**
+ * The items of a menu that depends on the project, as they stand now.
+ * @param {object} vm the VirtualMachine
+ * @param {object} target the target a script using the menu would be on
+ * @param {string} key a menu opcode, or `opcode.FIELD` for a dropdown on a block
+ * @returns {?{options: Array<string>, optionLabels: (object|undefined)}} the items, with
+ *   what the dropdown shows for any special ones; null when the menu does not depend on the project
+ */
+const projectMenuOptions = (vm, target, key) => {
+    const source = PROJECT_MENUS[key];
+    if (!source) return null;
+
+    const options = source(vm, target);
+    const special = options.filter(option => Object.prototype.hasOwnProperty.call(SPECIAL_ITEM_LABELS, option));
+    return special.length === 0 ? {options} : {
+        options,
+        optionLabels: Object.fromEntries(special.map(option => [option, SPECIAL_ITEM_LABELS[option]]))
+    };
+};
+
 /**
  * Find a menu block that a loaded extension registered.
  *
@@ -117,5 +187,6 @@ export {
     MENU_SHADOW_FIELDS,
     findExtensionMenu,
     menuFieldFor,
-    menuInputFor
+    menuInputFor,
+    projectMenuOptions
 };

@@ -5,7 +5,8 @@ import spriteLibraryContent from '../../libraries/sprites.json';
 import makeToolboxXML from '../../make-toolbox-xml';
 import randomizeSpritePosition from '../../randomize-sprite-position';
 import {createAssetHandlers} from './asset-tools';
-import {isScratchBlocksType} from './block-definitions';
+import {describeBlockType, isScratchBlocksType} from './block-definitions';
+import {completeCatalog} from './catalog';
 import {createEditingHandlers} from './editing-tools';
 import {findAssetIndex} from './find-asset';
 import {menuFieldFor, menuInputFor} from './menus';
@@ -72,8 +73,11 @@ const LOADABLE_EXTENSIONS = ['text2speech', 'music', 'pen', 'translate'];
 
 const MAX_SUGGESTIONS = 5;
 
-/** How many library names one search returns, to keep the reply small. */
+/** How many library names one search returns unless asked for more, to keep the reply small. */
 const LIBRARY_PAGE_SIZE = 60;
+
+/** The most names one page may hold. */
+const MAX_LIBRARY_PAGE_SIZE = 200;
 
 const suggestNames = (library, wanted) => {
     const needle = String(wanted).toLowerCase();
@@ -465,15 +469,27 @@ const createToolRunner = (vm, options = {}) => {
                 );
             }
 
+            const offset = typeof args.offset === 'undefined' ? 0 : args.offset;
+            const limit = typeof args.limit === 'undefined' ? LIBRARY_PAGE_SIZE : args.limit;
+            if (!Number.isInteger(offset) || offset < 0) {
+                throw new Error(`"offset" must be a whole number, 0 or more, got ${JSON.stringify(args.offset)}.`);
+            }
+            if (!Number.isInteger(limit) || limit < 1 || limit > MAX_LIBRARY_PAGE_SIZE) {
+                throw new Error(`"limit" must be a whole number from 1 to ${MAX_LIBRARY_PAGE_SIZE}, got ` +
+                    `${JSON.stringify(args.limit)}.`);
+            }
+
             const names = library.map(entry => entry.name);
             const query = typeof args.query === 'string' ? args.query.trim().toLowerCase() : '';
             const matches = query === '' ? names : names.filter(name => name.toLowerCase().includes(query));
 
             return {
                 kind: args.kind,
-                total: names.length,
-                matches: matches.slice(0, LIBRARY_PAGE_SIZE),
-                truncated: matches.length > LIBRARY_PAGE_SIZE
+                total: matches.length,
+                offset,
+                matches: matches.slice(offset, offset + limit),
+                // Where the next page starts, or null when this page is the last.
+                nextOffset: offset + limit < matches.length ? offset + limit : null
             };
         },
 
@@ -529,6 +545,8 @@ const createToolRunner = (vm, options = {}) => {
                 blocks = blocks.filter(entry => entry.opcode.toLowerCase().includes(search));
             }
 
+            // Completed after filtering: the whole palette is large, and only what was asked for is needed.
+            blocks = completeCatalog(blocks, {vm, target, describeBlock: describeBlockType});
             return {targetId: target.id, blocks};
         },
 

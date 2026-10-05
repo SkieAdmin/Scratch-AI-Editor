@@ -43,7 +43,9 @@ const makeProject = (state = {}) => {
 
 const makeDesktop = () => ({
     captureWindow: jest.fn(),
-    saveProject: jest.fn((bytes, request) => Promise.resolve({path: `C:/Projects/${request.path || request.title}.sb3`})),
+    saveProject: jest.fn((bytes, request) => Promise.resolve({
+        path: `C:/Projects/${request.path || request.title}.sb3`
+    })),
     loadProject: jest.fn(path => Promise.resolve({
         // A view into a larger buffer, as IPC can deliver one.
         bytes: new Uint8Array(new Uint8Array([9, ...SB3_BYTES, 9]).buffer, 1, SB3_BYTES.length),

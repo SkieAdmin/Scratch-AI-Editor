@@ -163,7 +163,19 @@ shared with the editor's own assistant panel. Tools that take a `targetId` accep
 | `list_sounds`         | A target's sounds, in sound-tab order                                                 |
 | `list_variables`      | The variables and lists a target can see                                              |
 | `get_block_catalog`   | The opcodes available, with their inputs and fields; filter by `category` or `search` |
-| `search_library`      | Names in the sprite, costume, backdrop or sound library                               |
+| `search_library`      | Names in the sprite, costume, backdrop or sound library, a page at a time             |
+
+`get_block_catalog` takes its slot types and defaults from the editor's toolbox, but the toolbox only lists inputs
+that hold a typed-in default. Each block's own scratch-blocks definition fills in the rest: every input carries a
+`kind` of `value`, `boolean` (a condition block goes there), `branch` (an array of blocks inside a C-block) or `menu`,
+and every dropdown field its options. So `control_if_else` reports `CONDITION` as `boolean` and `SUBSTACK` and
+`SUBSTACK2` as branches, `event_whenkeypressed` reports `KEY_OPTION` with its keys, and `event_whenbackdropswitchesto`
+reports `BACKDROP` with the backdrops the project has. A menu input names its menu block and field, and lists the
+items it offers now: costumes, backdrops, sounds and the other sprites come from the project and the target asked
+about, and `optionLabels` explains special items such as `_mouse_`. Variable fields list the variables they can name.
+
+`search_library` returns up to `limit` names (60 unless asked, at most 200) starting at `offset`, with `total`, the
+number of names that match, and `nextOffset`, where the next page starts, or `null` on the last page.
 
 ### Changing the project
 
