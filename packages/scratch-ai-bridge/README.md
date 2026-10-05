@@ -174,6 +174,9 @@ reports `BACKDROP` with the backdrops the project has. A menu input names its me
 items it offers now: costumes, backdrops, sounds and the other sprites come from the project and the target asked
 about, and `optionLabels` explains special items such as `_mouse_`. Variable fields list the variables they can name.
 
+A `category` filter takes the palette's names (`motion`, `looks`, `sound`, `events`, `control`, `sensing`, `operators`,
+`variables`, `myBlocks`, or an extension's id such as `pen`) or the opcode prefix (`event`, `data`, `operator`).
+
 `search_library` returns up to `limit` names (60 unless asked, at most 200) starting at `offset`, with `total`, the
 number of names that match, and `nextOffset`, where the next page starts, or `null` on the last page.
 
@@ -270,7 +273,8 @@ call passes `"confirm": true`. In the desktop app `save_project` writes to `path
 `Documents/Skie AI Editor/Projects/<title>.sb3` without one, returns the path, and marks the project saved; a
 relative `path` is inside that folder, for `load_project` too. A browser can only download the file, so there it takes
 no `path` and the project stays marked unsaved, as it does after the editor's own download. Like the capture tools,
-these three are offered to MCP clients only, not to the editor's chat.
+`new_project`, `save_project` and `load_project` are offered to MCP clients only; the editor's chat keeps
+`set_project_title`.
 
 ## Security model
 
