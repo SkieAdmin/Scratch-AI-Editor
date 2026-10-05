@@ -110,19 +110,57 @@ describe('createProjectAdapter', () => {
         expect(() => project.createNew()).toThrow(/busy loading/);
     });
 
-    test('opens a file the way File > Load does, named after the file', async () => {
+    test('opens a file under the loading screen, named after the file', async () => {
         const store = makeStore();
-        const vm = {loadProject: jest.fn(() => Promise.resolve())};
+        let loadingScreenUp = false;
+        const vm = {
+            loadProject: jest.fn(() => {
+                loadingScreenUp = store.getState().scratchGui.modals.loadingProject;
+                return Promise.resolve();
+            })
+        };
         const project = createProjectAdapter(store, vm);
         const data = new ArrayBuffer(4);
 
         await project.load(data, 'Jungle');
 
         expect(vm.loadProject).toHaveBeenCalledWith(data);
+        expect(loadingScreenUp).toBe(true);
         const gui = store.getState().scratchGui;
-        expect(gui.projectState.loadingState).toBe(LoadingState.SHOWING_WITHOUT_ID);
         expect(gui.projectTitle).toBe('Jungle');
         expect(gui.modals.loadingProject).toBe(false);
+    });
+
+    /*
+     * The File menu's loader watches for the file-upload loading state and
+     * cancels any upload it did not start itself, which dropped the editor back
+     * to "showing" while the VM was still loading.
+     */
+    test('leaves the File > Load states to the File menu\'s own loader', async () => {
+        const store = makeStore();
+        const states = [];
+        store.subscribe(() => states.push(store.getState().scratchGui.projectState.loadingState));
+        const project = createProjectAdapter(store, {loadProject: () => Promise.resolve()});
+
+        await project.load(new ArrayBuffer(4), 'Jungle');
+
+        expect(states.every(state => state === LoadingState.SHOWING_WITHOUT_ID)).toBe(true);
+    });
+
+    test('a project just opened from a file has no unsaved changes, whatever loading reported', async () => {
+        const store = makeStore();
+        const vm = {
+            loadProject: () => {
+                // The renderer reports a change as it finishes loading a skin, a turn later.
+                setTimeout(() => store.dispatch(setProjectChanged()));
+                return Promise.resolve();
+            }
+        };
+        const project = createProjectAdapter(store, vm);
+
+        await project.load(new ArrayBuffer(4), 'Jungle');
+
+        expect(project.hasUnsavedChanges()).toBe(false);
     });
 
     test('keeps showing the old project when a file will not open', async () => {

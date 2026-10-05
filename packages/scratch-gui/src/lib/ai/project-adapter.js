@@ -1,23 +1,16 @@
 import {closeLoadingProject, openLoadingProject} from '../../reducers/modals';
 import {setProjectUnchanged} from '../../reducers/project-changed';
-import {
-    LoadingState,
-    getIsError,
-    getIsShowingProject,
-    onLoadedProject,
-    requestNewProject,
-    requestProjectUpload
-} from '../../reducers/project-state';
+import {getIsError, getIsShowingProject, requestNewProject} from '../../reducers/project-state';
 import {setProjectTitle} from '../../reducers/project-title';
 
 /**
  * The editor's side of the project file tools: its title, whether it holds
- * unsaved work, and opening a project, driven through the same redux actions
- * as the File menu so the rest of the editor reacts as it would to a click.
+ * unsaved work, and starting or opening a project.
  *
- * File > New and the file loader save to a project server first when the
- * editor has one. Neither the desktop app nor the standalone editor does, so
- * these steps never ask for that.
+ * A new project goes through the same redux actions as File > New, so the
+ * rest of the editor reacts as it would to the menu. File > New saves to a
+ * project server first when the editor has one; neither the desktop app nor
+ * the standalone editor does, so this never asks for that.
  * @param {object} store the editor's redux store
  * @param {object} vm the VirtualMachine
  * @returns {object} the project adapter the tool runner takes
@@ -65,22 +58,29 @@ const createProjectAdapter = (store, vm) => {
             return shown;
         },
 
+        /*
+         * Not through the File > Load states: the menu's file loader owns
+         * those, and cancels any load it did not start itself. The VM opens
+         * the file directly, under the same loading screen.
+         */
         load: async (data, title) => {
             assertIdle();
-            store.dispatch(requestProjectUpload(gui().projectState.loadingState));
             store.dispatch(openLoadingProject());
-            let loaded = false;
             try {
                 await vm.loadProject(data);
-                store.dispatch(setProjectTitle(title));
-                loaded = true;
             } catch (error) {
                 // The VM rejects a file it cannot read with a bare string.
                 throw new Error(`The editor could not open that project: ${error.message || String(error)}`);
             } finally {
-                store.dispatch(onLoadedProject(LoadingState.LOADING_VM_FILE_UPLOAD, false, loaded));
                 store.dispatch(closeLoadingProject());
             }
+            store.dispatch(setProjectTitle(title));
+            // A project just opened from a file has no unsaved changes. The
+            // renderer can finish loading skins a turn later and report a
+            // change as it does, so, like the editor's own loaders, this
+            // clears the flag after that.
+            await new Promise(resolve => setTimeout(resolve));
+            store.dispatch(setProjectUnchanged());
         }
     };
 };
