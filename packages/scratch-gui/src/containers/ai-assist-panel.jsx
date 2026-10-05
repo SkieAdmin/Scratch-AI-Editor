@@ -11,11 +11,12 @@ import intlShape from '../lib/intlShape.js';
 import {createId, runChatTurn} from '../lib/ai/chat-session';
 import {buildSystemPrompt} from '../lib/ai/system-prompt';
 import {BRIDGE_STATUS, DEEPSEEK_MODELS, PROVIDER_IDS} from '../lib/ai/constants';
+import {getDesktopShell, isDesktop} from '../lib/ai/desktop';
 import {logError} from '../lib/ai/log';
 import {providerNeedsApiKey, saveConfig} from '../lib/ai/persistence';
 import {providerMessages} from '../lib/ai/provider-messages';
 import {getProvider} from '../lib/ai/providers';
-import {TOOL_DEFINITIONS, createToolRunner, toChatTools} from '../lib/ai/scratch-tools';
+import {createToolRunner, selectToolDefinitions, toChatTools} from '../lib/ai/scratch-tools';
 import {
     addAiMessage,
     clearAiChat,
@@ -63,14 +64,18 @@ class AiAssistPanel extends React.Component {
             'handleNewChat',
             'handleSend',
             'handleToggleVisible',
-            'handleToolInvoke'
+            'handleToolInvoke',
+            'runChatTool'
         ]);
 
-        this.toolRunner = createToolRunner(props.vm);
+        const desktop = isDesktop();
         // The bridge registers these as MCP tools, which keeps the MCP shape;
         // a chat request needs them restated as function tools.
-        this.toolDefinitions = TOOL_DEFINITIONS;
-        this.chatTools = toChatTools(TOOL_DEFINITIONS);
+        this.toolDefinitions = selectToolDefinitions({desktop, editorChat: false});
+        const chatDefinitions = selectToolDefinitions({desktop, editorChat: true});
+        this.chatTools = toChatTools(chatDefinitions);
+        this.chatToolNames = new Set(chatDefinitions.map(tool => tool.name));
+        this.toolRunner = null;
         this.bridge = null;
         this.abortController = null;
         this.draft = null;
@@ -78,6 +83,9 @@ class AiAssistPanel extends React.Component {
     }
 
     componentDidMount () {
+        // Created on mount rather than in the constructor because it listens to
+        // the VM, and only a mounted panel is unmounted, which stops it again.
+        this.toolRunner = createToolRunner(this.props.vm, {desktop: getDesktopShell()});
         if (this.props.config.useBridge) this.openBridge();
     }
 
@@ -94,6 +102,7 @@ class AiAssistPanel extends React.Component {
         if (this.flushTimer !== null) clearTimeout(this.flushTimer);
         this.closeBridge();
         if (this.abortController) this.abortController.abort();
+        this.toolRunner.dispose();
     }
 
     openBridge () {
@@ -126,6 +135,22 @@ class AiAssistPanel extends React.Component {
      * @returns {Promise<object>} the tool's result
      */
     handleToolInvoke (name, args) {
+        return this.toolRunner.runTool(name, args);
+    }
+
+    /**
+     * Run a tool the editor's own chat asked for.
+     *
+     * The model was offered only the chat's tools, but the call is its own
+     * output, so a tool it was not offered is refused rather than run.
+     * @param {string} name the tool to run
+     * @param {object} args the tool's arguments
+     * @returns {Promise<object>} the tool's result
+     */
+    runChatTool (name, args) {
+        if (!this.chatToolNames.has(name)) {
+            return Promise.reject(new Error(`There is no tool called "${name}" in this chat.`));
+        }
         return this.toolRunner.runTool(name, args);
     }
 
@@ -243,7 +268,7 @@ class AiAssistPanel extends React.Component {
                 history,
                 systemPrompt: buildSystemPrompt({spriteNames: this.props.spriteNames}),
                 toolDefinitions: this.chatTools,
-                runTool: this.toolRunner.runTool,
+                runTool: this.runChatTool,
                 maxRounds: this.props.config.maxToolRounds,
                 signal: this.abortController.signal,
                 onMessageStart: id => {

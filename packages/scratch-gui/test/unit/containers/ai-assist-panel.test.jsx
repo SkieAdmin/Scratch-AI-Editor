@@ -1,3 +1,4 @@
+import EventEmitter from 'events';
 import React from 'react';
 import configureStore from 'redux-mock-store';
 import {Provider} from 'react-redux';
@@ -11,8 +12,9 @@ import {BRIDGE_STATUS, PROVIDER_IDS} from '../../../src/lib/ai/constants';
 import {aiAssistInitialState} from '../../../src/reducers/ai-assist';
 import {flushMicrotasks, installFakeSocket, lastSocket} from '../lib/ai/fake-bridge-socket';
 
-// The container only closes over the vm; nothing in these tests reaches it.
-const fakeVm = {};
+// The container listens to the runtime's events from the moment it mounts;
+// beyond that, nothing in these tests reaches the vm.
+const fakeVm = {runtime: new EventEmitter()};
 
 const ADD_MESSAGE = 'scratch-gui/ai-assist/ADD_MESSAGE';
 const SET_ERROR = 'scratch-gui/ai-assist/SET_ERROR';
@@ -178,6 +180,57 @@ describe('AiAssistPanel talking to the bridge', () => {
 
         expect(assistant).toHaveLength(1);
         expect(assistant[0]).toMatchObject({content: '', reasoning: 'they said hi'});
+    });
+
+    test('offers an MCP client every tool, the picture tools included', () => {
+        renderConnected(buildStore());
+
+        const [hello] = lastSocket().sentOfType('hello');
+        const names = hello.tools.map(tool => tool.name);
+        expect(names).toContain('capture_stage');
+        expect(names).toContain('get_runtime_state');
+        // That one needs the desktop shell, which a browser does not have.
+        expect(names).not.toContain('capture_editor');
+    });
+
+    /*
+     * The chat hands every tool result to the model as JSON text, so a picture
+     * would arrive as a wall of base64.
+     */
+    test('keeps the picture tools out of its own chat', async () => {
+        const rendered = renderConnected(buildStore());
+
+        send(rendered, 'make a cat');
+        await flushMicrotasks();
+
+        const names = lastSocket().sentOfType('chat')[0].tools.map(tool => tool.function.name);
+        expect(names).not.toContain('capture_stage');
+        expect(names).toContain('get_runtime_state');
+    });
+
+    test('refuses a tool its chat model was not offered', async () => {
+        const rendered = renderConnected(buildStore());
+
+        send(rendered, 'show me the stage');
+        await flushMicrotasks();
+        const {id} = lastSocket().sentOfType('chat')[0];
+        lastSocket().receive({
+            type: 'chat-done',
+            id,
+            ok: true,
+            result: {
+                content: '',
+                toolCalls: [{id: 'call-1', name: 'capture_stage', args: {}, rawArguments: '{}'}],
+                finishReason: 'tool_calls'
+            }
+        });
+        await flushMicrotasks();
+
+        const followUp = lastSocket().sentOfType('chat')[1];
+        const toolMessage = followUp.messages.find(message => message.role === 'tool');
+        expect(JSON.parse(toolMessage.content)).toEqual({
+            error: 'There is no tool called "capture_stage" in this chat.'
+        });
     });
 
     test('tells the bridge to stop a turn the user abandons', async () => {

@@ -5,7 +5,10 @@ import spriteLibraryContent from '../../libraries/sprites.json';
 import makeToolboxXML from '../../make-toolbox-xml';
 import randomizeSpritePosition from '../../randomize-sprite-position';
 import {isScratchBlocksType} from './block-definitions';
+import {findAssetIndex} from './find-asset';
 import {menuFieldFor, menuInputFor} from './menus';
+import {createRuntimeObserver} from './runtime-observer';
+import {createTestingHandlers} from './testing-tools';
 import {
     BROADCAST_VARIABLE_TYPE,
     LIST_VARIABLE_TYPE,
@@ -107,11 +110,17 @@ const assertNumber = (name, value) => {
  * @param {object} [options] overrides for the tool layer
  * @param {Function} [options.getToolboxXml] returns the toolbox XML for a target; supply this where
  *   scratch-blocks is not loaded, otherwise the editor's own toolbox is used
- * @returns {{runTool: Function}} the tool runner
+ * @param {?object} [options.desktop] the desktop shell's window services; absent in a browser
+ * @returns {{runTool: Function, dispose: Function}} the tool runner, and a way to stop it
+ *   listening to the VM
  */
 const createToolRunner = (vm, options = {}) => {
     const getToolboxXml = options.getToolboxXml ||
         (target => makeToolboxXML(false, target.isStage, target.id, vm.runtime.getBlocksXML(target)));
+    const desktop = options.desktop || null;
+
+    // Listening starts now, so a question asked before the first tool call is not missed.
+    const observer = createRuntimeObserver(vm.runtime);
 
     const stageTarget = () => vm.runtime.getTargetForStage();
 
@@ -570,18 +579,28 @@ const createToolRunner = (vm, options = {}) => {
                 }
                 spriteInfo.visible = args.visible;
             }
-            if (Object.keys(spriteInfo).length === 0) {
-                throw new Error('Pass at least one of x, y, direction, size or visible.');
+
+            let costumeIndex = null;
+            if (typeof args.costume !== 'undefined') {
+                const choice = typeof args.costume === 'number' ? {index: args.costume} : {name: args.costume};
+                costumeIndex = findAssetIndex(target.getCostumes(), choice, 'costume', target.getName());
             }
 
-            if (vm.editingTarget && vm.editingTarget.id === target.id) {
-                // The VM's own postSpriteInfo applies to whatever is being edited or dragged,
-                // which is the editor's path and handles a drag in progress.
-                vm.postSpriteInfo(spriteInfo);
-            } else {
-                target.postSpriteInfo(spriteInfo);
-                vm.runtime.emitProjectChanged();
+            if (Object.keys(spriteInfo).length === 0 && costumeIndex === null) {
+                throw new Error('Pass at least one of x, y, direction, size, visible or costume.');
             }
+
+            if (Object.keys(spriteInfo).length > 0) {
+                if (vm.editingTarget && vm.editingTarget.id === target.id) {
+                    // The VM's own postSpriteInfo applies to whatever is being edited or dragged,
+                    // which is the editor's path and handles a drag in progress.
+                    vm.postSpriteInfo(spriteInfo);
+                } else {
+                    target.postSpriteInfo(spriteInfo);
+                    vm.runtime.emitProjectChanged();
+                }
+            }
+            if (costumeIndex !== null) target.setCostume(costumeIndex);
             vm.emitTargetsUpdate();
 
             return {
@@ -590,7 +609,8 @@ const createToolRunner = (vm, options = {}) => {
                 y: target.y,
                 direction: target.direction,
                 size: target.size,
-                visible: target.visible
+                visible: target.visible,
+                costume: target.getCostumes()[target.currentCostume].name
             };
         },
 
@@ -763,7 +783,9 @@ const createToolRunner = (vm, options = {}) => {
             const target = resolveTarget(args.targetId);
             vm.setEditingTarget(target.id);
             return {editingTargetId: target.id, name: target.getName()};
-        }
+        },
+
+        ...createTestingHandlers({vm, resolveTarget, stageTarget, observer, desktop})
     };
 
     /**
@@ -784,7 +806,7 @@ const createToolRunner = (vm, options = {}) => {
         return await handler(args);
     };
 
-    return {runTool};
+    return {runTool, dispose: () => observer.dispose()};
 };
 
 export {createToolRunner};

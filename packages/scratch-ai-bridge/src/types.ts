@@ -18,6 +18,17 @@ export interface ToolDefinition {
   inputSchema: ToolInputSchema
 }
 
+/** One block of tool output as MCP shows it to the model: text, or a base64 image. */
+export type ToolContentBlock = { type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }
+
+/**
+ * A tool result the editor has already shaped as MCP content, which is how it
+ * returns a picture. Any other result is sent to the client as JSON text.
+ */
+export interface ToolContentResult {
+  content: ToolContentBlock[]
+}
+
 /** A tool call as it appears on the OpenAI chat-completions wire. */
 export interface WireToolCall {
   id: string

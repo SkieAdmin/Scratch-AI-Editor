@@ -151,6 +151,24 @@ describe('the MCP endpoint over Streamable HTTP', () => {
     expect(await pending).toEqual({ content: [{ type: 'text', text: '{"running":true}' }] })
   })
 
+  it('hands a picture to the client as an image block', async () => {
+    const { running, url } = await start()
+    const editor = attachEditor(running)
+    const { client } = await connectClient(url)
+    clients.push(client)
+
+    const pending = client.callTool({ name: 'green_flag', arguments: {} })
+    await vi.waitFor(() => expect(editor.sentOfType('invoke')).toHaveLength(1))
+    const content = [
+      { type: 'image', data: 'iVBORw0KGgo=', mimeType: 'image/png' },
+      { type: 'text', text: '{"width":480,"height":360}' },
+    ]
+    const id = editor.sentOfType('invoke').at(0)?.id
+    running.hub.handleMessage(JSON.stringify({ type: 'result', id, ok: true, result: { content } }))
+
+    expect(await pending).toEqual({ content })
+  })
+
   it('lets a client that restarted start a new session', async () => {
     const { url } = await start()
     const before = await connectClient(url)

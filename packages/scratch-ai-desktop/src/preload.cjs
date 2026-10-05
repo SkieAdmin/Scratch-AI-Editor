@@ -20,4 +20,8 @@ contextBridge.exposeInMainWorld('scratchAiDesktop', {
   // Problems the editor notices belong in the same file as the ones the shell
   // notices, so the user has one place to look.
   log: (level, message) => ipcRenderer.send('scratch-ai:log', level, message),
+
+  // A page cannot take a picture of its own window; the shell can, even while
+  // the window is covered by another one.
+  captureWindow: () => ipcRenderer.invoke('scratch-ai:capture-window'),
 })

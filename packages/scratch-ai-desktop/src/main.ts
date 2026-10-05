@@ -11,6 +11,7 @@ import {
   shell,
   type BaseWindow,
   type MessageBoxOptions,
+  type WebContents,
 } from 'electron'
 import {
   configPath,
@@ -39,6 +40,9 @@ const LOOPBACK = '127.0.0.1'
 const SHUTDOWN_GRACE_MS = 3000
 
 const WINDOW_DEFAULTS = { width: 1280, height: 860, minWidth: 1024, minHeight: 700 }
+
+/** The widest a window capture is returned; wider ones are scaled down. */
+const MAX_CAPTURE_WIDTH = 1600
 
 /** The built editor, copied next to the compiled main process by `npm run stage`. */
 const RENDERER_ROOT = join(HERE, '..', 'renderer')
@@ -81,6 +85,7 @@ async function startServices(): Promise<string> {
   ipcMain.on('scratch-ai:log', (_event, level: LogLevel, message: string) => {
     logger?.log(level, message)
   })
+  ipcMain.handle('scratch-ai:capture-window', (event) => captureWindow(event.sender))
 
   renderer = await startRendererServer(RENDERER_ROOT, LOOPBACK)
   const rendererOrigin = renderer.origin
@@ -117,6 +122,30 @@ async function startServices(): Promise<string> {
   // to the page itself, which is the only origin allowed to use them.
   target.searchParams.set('aiBridge', bridge.editorUrl)
   return target.toString()
+}
+
+/**
+ * Take a picture of the editor window for the capture_editor tool.
+ *
+ * `capturePage` asks the page to paint, so the picture is current even while
+ * another window covers this one, where a screen grab would show stale pixels.
+ * @param contents the page asking, which is the one to capture
+ * @returns the picture as base64 PNG, with its size
+ */
+async function captureWindow(
+  contents: WebContents,
+): Promise<{ data: string; mimeType: string; width: number; height: number }> {
+  let image = await contents.capturePage()
+  if (image.isEmpty()) {
+    throw new Error('The editor window could not be captured. It may be minimized; restore it and try again.')
+  }
+  // A high-DPI screen doubles or triples the pixels without adding anything
+  // a model can see, and it multiplies the size of every reply.
+  if (image.getSize().width > MAX_CAPTURE_WIDTH) {
+    image = image.resize({ width: MAX_CAPTURE_WIDTH })
+  }
+  const { width, height } = image.getSize()
+  return { data: image.toPNG().toString('base64'), mimeType: 'image/png', width, height }
 }
 
 /**

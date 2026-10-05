@@ -4,6 +4,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import type { EditorHub } from '../hub/editor-hub'
+import type { ToolContentBlock, ToolContentResult } from '../types'
 
 /** The name MCP clients see for this server. */
 export const MCP_SERVER_NAME = 'scratch-ai-bridge'
@@ -33,6 +34,8 @@ export function createMcpServer(hub: EditorHub, version: string): Server {
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     try {
       const result = await hub.invoke(request.params.name, request.params.arguments ?? {})
+      // A picture is returned as MCP content already, so the model sees an image.
+      if (isToolContent(result)) return { content: result.content }
       return { content: [{ type: 'text' as const, text: JSON.stringify(result ?? null) }] }
     } catch (error) {
       // A tool error is an answer, not a protocol failure: the model should see
@@ -82,6 +85,31 @@ export function notifyToolListChanged(servers: readonly Server[]): void {
       console.warn(`scratch-ai-bridge: could not announce the tool list change: ${describeError(error)}`)
     })
   }
+}
+
+/**
+ * Whether a tool result is already MCP content: a non-empty `content` array of
+ * text and base64 image blocks.
+ * @param result what the editor returned
+ * @returns true when it can be handed to the client as it is
+ */
+export function isToolContent(result: unknown): result is ToolContentResult {
+  if (result === null || typeof result !== 'object') return false
+  const { content } = result as { content?: unknown }
+  return Array.isArray(content) && content.length > 0 && content.every(isContentBlock)
+}
+
+/**
+ * Whether one value is a text or image content block.
+ * @param block a member of a result's `content` array
+ * @returns true for a block MCP can carry
+ */
+function isContentBlock(block: unknown): block is ToolContentBlock {
+  if (block === null || typeof block !== 'object') return false
+  const candidate = block as Record<string, unknown>
+  if (candidate.type === 'text') return typeof candidate.text === 'string'
+  if (candidate.type === 'image') return typeof candidate.data === 'string' && typeof candidate.mimeType === 'string'
+  return false
 }
 
 /**

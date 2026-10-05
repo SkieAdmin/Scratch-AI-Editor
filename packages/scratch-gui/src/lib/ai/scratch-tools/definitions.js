@@ -5,12 +5,26 @@
  * server's `registerTool` and to an OpenAI-style `tools` array without
  * translation. Descriptions are written for the model, not for a person: they
  * say when to reach for the tool and what a valid argument looks like.
+ *
+ * Two flags limit where a tool is offered. `mcpOnly` tools are kept from the
+ * editor's own chat, which hands tool results to the model as text: a picture
+ * would arrive as a wall of base64. `desktopOnly` tools need the desktop
+ * shell and are not offered in a browser.
  */
 
 const targetProperty = {
     type: 'string',
     description: 'Sprite name, target id, or "stage". Defaults to the sprite currently being edited.'
 };
+
+const assetChoiceProperties = kind => ({
+    name: {type: 'string', description: `The ${kind}'s name.`},
+    index: {
+        type: 'integer',
+        minimum: 0,
+        description: `The ${kind}'s position, counting from 0, as list_costumes reports it. Pass name or index.`
+    }
+});
 
 const blockSpecDescription =
     'A block is {"opcode": "motion_movesteps", "inputs": {...}, "fields": {...}}. An input value is ' +
@@ -144,8 +158,8 @@ const TOOL_DEFINITIONS = [
     },
     {
         name: 'set_sprite_properties',
-        description: 'Move, turn, resize, or show and hide a sprite. Only the properties you pass ' +
-            'are changed.',
+        description: 'Move, turn, resize, show or hide a sprite, or switch its costume. Only the ' +
+            'properties you pass are changed.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -154,7 +168,11 @@ const TOOL_DEFINITIONS = [
                 y: {type: 'number', description: 'Stage y position, roughly -180 to 180.'},
                 direction: {type: 'number', description: 'Heading in degrees; 90 points right.'},
                 size: {type: 'number', description: 'Size as a percentage; 100 is full size.'},
-                visible: {type: 'boolean', description: 'Whether the sprite is shown on the stage.'}
+                visible: {type: 'boolean', description: 'Whether the sprite is shown on the stage.'},
+                costume: {
+                    type: ['string', 'integer'],
+                    description: 'The costume to wear: its name, or its position counting from 0.'
+                }
             },
             additionalProperties: false
         }
@@ -330,8 +348,149 @@ const TOOL_DEFINITIONS = [
             required: ['targetId'],
             additionalProperties: false
         }
+    },
+    {
+        name: 'get_runtime_state',
+        description: 'Read what the project is doing right now: whether any script is running, the ' +
+            'current backdrop, each sprite\'s position, direction, size, visibility, costume, layer and ' +
+            'speech or thought bubble, the question an "ask and wait" block is waiting on, and every ' +
+            'variable\'s value. Use it after green_flag, click_sprite, press_key or answer_question to ' +
+            'check that the scripts did what they should.',
+        inputSchema: {
+            type: 'object',
+            properties: {},
+            additionalProperties: false
+        }
+    },
+    {
+        name: 'wait',
+        description: 'Let the project run for a while, then read its state as get_runtime_state does. ' +
+            'Use it to check timing, for example that a "say for 2 seconds" bubble is gone after 2 seconds.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                ms: {
+                    type: 'integer',
+                    minimum: 0,
+                    maximum: 15000,
+                    description: 'How long to wait, in milliseconds. At most 15000.'
+                }
+            },
+            required: ['ms'],
+            additionalProperties: false
+        }
+    },
+    {
+        name: 'capture_stage',
+        mcpOnly: true,
+        description: 'Take a picture of the stage as it looks right now, speech and thought bubbles ' +
+            'included, and return it as a PNG image. Use it to check how a scene looks.',
+        inputSchema: {
+            type: 'object',
+            properties: {},
+            additionalProperties: false
+        }
+    },
+    {
+        name: 'capture_editor',
+        mcpOnly: true,
+        desktopOnly: true,
+        description: 'Take a picture of the whole editor window, code area and sprite list included, ' +
+            'and return it as a PNG image. Use capture_stage when only the stage matters.',
+        inputSchema: {
+            type: 'object',
+            properties: {},
+            additionalProperties: false
+        }
+    },
+    {
+        name: 'click_sprite',
+        description: 'Click a sprite, which starts its "when this sprite clicked" scripts. Pass "stage" ' +
+            'to click the stage instead, which starts the stage\'s "when stage clicked" scripts.',
+        inputSchema: {
+            type: 'object',
+            properties: {targetId: targetProperty},
+            required: ['targetId'],
+            additionalProperties: false
+        }
+    },
+    {
+        name: 'press_key',
+        description: 'Press a key and let it go, which starts "when key pressed" scripts; "key pressed?" ' +
+            'sees the key while it is held.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                key: {
+                    type: 'string',
+                    description: 'A single character such as "a" or "1", or one of "space", "left arrow", ' +
+                        '"right arrow", "up arrow", "down arrow", "enter".'
+                },
+                holdMs: {
+                    type: 'integer',
+                    minimum: 0,
+                    maximum: 5000,
+                    description: 'How long to hold the key down, in milliseconds. Defaults to 100.'
+                }
+            },
+            required: ['key'],
+            additionalProperties: false
+        }
+    },
+    {
+        name: 'answer_question',
+        description: 'Type an answer into the box an "ask and wait" block shows, and press enter, as the ' +
+            'child would. The answer then becomes the value of the "answer" block. Fails when no question ' +
+            'is waiting; get_runtime_state shows the question.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                text: {type: 'string', description: 'The answer to type.'}
+            },
+            required: ['text'],
+            additionalProperties: false
+        }
+    },
+    {
+        name: 'set_backdrop',
+        description: 'Switch the stage to one of its backdrops, by name or by position, without adding ' +
+            'another copy of it. Starts the "when backdrop switches to" scripts, as the "switch backdrop ' +
+            'to" block does, unless runHats is false.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                ...assetChoiceProperties('backdrop'),
+                runHats: {
+                    type: 'boolean',
+                    description: 'Whether to start "when backdrop switches to" scripts. Defaults to true.'
+                }
+            },
+            additionalProperties: false
+        }
+    },
+    {
+        name: 'set_costume',
+        description: 'Switch a sprite to one of its costumes, by name or by position.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                targetId: targetProperty,
+                ...assetChoiceProperties('costume')
+            },
+            additionalProperties: false
+        }
     }
 ];
+
+/**
+ * The tools to offer in one place.
+ * @param {object} where the place the list is for
+ * @param {boolean} where.desktop whether the editor runs in the desktop shell
+ * @param {boolean} where.editorChat true for the editor's own chat, false for an MCP client
+ * @returns {Array<object>} the tools, in catalogue order
+ */
+const selectToolDefinitions = ({desktop, editorChat}) => TOOL_DEFINITIONS.filter(tool =>
+    (desktop || !tool.desktopOnly) && !(editorChat && tool.mcpOnly));
 
 /**
  * Restate the catalogue the way an OpenAI-compatible chat API wants it.
@@ -354,5 +513,6 @@ const toChatTools = definitions => definitions.map(tool => ({
 
 export {
     TOOL_DEFINITIONS,
+    selectToolDefinitions,
     toChatTools
 };

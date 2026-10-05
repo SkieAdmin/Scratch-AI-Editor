@@ -28,4 +28,15 @@ const getDesktopConfigStore = () => {
     return desktop;
 };
 
-export {getDesktopBridgeUrl, getDesktopConfigStore, isDesktop};
+/**
+ * The desktop shell's window services, such as capturing the window, which a
+ * page in a browser cannot do for itself. Absent in a browser.
+ * @returns {?object} an object with `captureWindow`, or null
+ */
+const getDesktopShell = () => {
+    const desktop = typeof window === 'undefined' ? null : window.scratchAiDesktop;
+    if (!desktop || typeof desktop.captureWindow !== 'function') return null;
+    return desktop;
+};
+
+export {getDesktopBridgeUrl, getDesktopConfigStore, getDesktopShell, isDesktop};

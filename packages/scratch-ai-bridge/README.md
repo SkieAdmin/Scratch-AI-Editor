@@ -167,20 +167,20 @@ shared with the editor's own assistant panel. Tools that take a `targetId` accep
 
 ### Changing the project
 
-| Tool                        | What it does                                           |
-| --------------------------- | ------------------------------------------------------ |
-| `add_sprite_from_library`   | Add a library sprite, optionally renamed and placed    |
-| `delete_sprite`             | Delete a sprite and its clones                         |
-| `rename_sprite`             | Rename a sprite                                        |
-| `set_sprite_properties`     | Move, turn, resize, show or hide a sprite              |
-| `add_costume_from_library`  | Add a library costume to a sprite or the stage         |
-| `add_backdrop_from_library` | Add a library backdrop and switch to it                |
-| `add_sound_from_library`    | Add a library sound                                    |
-| `set_variable`              | Set a variable or list, creating it if needed          |
-| `create_script`             | Build a stack of blocks; see below                     |
-| `delete_script`             | Delete a script by its top block's id                  |
-| `add_extension`             | Switch on `text2speech`, `music`, `pen` or `translate` |
-| `set_editing_target`        | Show a sprite or the stage in the editor               |
+| Tool                        | What it does                                                     |
+| --------------------------- | ---------------------------------------------------------------- |
+| `add_sprite_from_library`   | Add a library sprite, optionally renamed and placed              |
+| `delete_sprite`             | Delete a sprite and its clones                                   |
+| `rename_sprite`             | Rename a sprite                                                  |
+| `set_sprite_properties`     | Move, turn, resize, show or hide a sprite, or switch its costume |
+| `add_costume_from_library`  | Add a library costume to a sprite or the stage                   |
+| `add_backdrop_from_library` | Add a library backdrop and switch to it                          |
+| `add_sound_from_library`    | Add a library sound                                              |
+| `set_variable`              | Set a variable or list, creating it if needed                    |
+| `create_script`             | Build a stack of blocks; see below                               |
+| `delete_script`             | Delete a script by its top block's id                            |
+| `add_extension`             | Switch on `text2speech`, `music`, `pen` or `translate`           |
+| `set_editing_target`        | Show a sprite or the stage in the editor                         |
 
 `create_script` takes the blocks top to bottom, each as `{"opcode", "inputs", "fields"}`. An input is a number or
 string, a nested block spec for a reporter, an array of block specs for a C-block branch, or
@@ -191,12 +191,29 @@ real _switch backdrop to [Jungle v]_ block. A menu can also be named outright, a
 an extension's menus (`pen_menu_colorParam` and so on) once the extension is loaded, which `create_script` does by
 itself.
 
-### Running the project
+### Running and testing the project
 
-| Tool         | What it does                             |
-| ------------ | ---------------------------------------- |
-| `green_flag` | Start the project                        |
-| `stop_all`   | Stop every script, as the stop sign does |
+These let a client check what it built by running it, the way a person would: start it, click and type, answer its
+questions, and look.
+
+| Tool                | What it does                                                                                             |
+| ------------------- | -------------------------------------------------------------------------------------------------------- |
+| `green_flag`        | Start the project                                                                                        |
+| `stop_all`          | Stop every script, as the stop sign does                                                                 |
+| `get_runtime_state` | Running or not, the backdrop, each sprite's position, costume, layer and bubble, the question, variables |
+| `wait`              | Let the project run for up to 15 seconds, then return `get_runtime_state`                                |
+| `click_sprite`      | Start a sprite's "when this sprite clicked" scripts, or the stage's "when stage clicked"                 |
+| `press_key`         | Press and release a key (`"space"`, `"left arrow"`, `"a"`, ...), holding it for `holdMs`                 |
+| `answer_question`   | Answer the waiting "ask and wait" question, as typing it and pressing enter would                        |
+| `set_backdrop`      | Switch to a backdrop by name or index, starting its "when backdrop switches to" scripts                  |
+| `set_costume`       | Switch a sprite's costume by name or index                                                               |
+| `capture_stage`     | A PNG of the stage as it is now, speech bubbles included                                                 |
+| `capture_editor`    | A PNG of the whole editor window; desktop app only                                                       |
+
+`capture_stage` and `capture_editor` return an MCP `image` content block, followed by a `text` block with the picture's
+size; the editor shapes such a result as MCP content and the bridge passes it through. Every other result arrives as one
+`text` block of JSON. The editor's own chat panel is not offered the two capture tools, because it gives tool results to
+its model as text.
 
 ## Security model
 

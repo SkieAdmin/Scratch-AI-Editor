@@ -35,6 +35,7 @@ export { DEFAULT_IDLE_TIMEOUT_MS, McpHttpSessions, type McpHttpSessionsOptions }
 export {
   MCP_SERVER_NAME,
   createMcpServer,
+  isToolContent,
   notifyToolListChanged,
   serveMcpOverHttp,
   serveMcpOverStdio,
@@ -68,6 +69,8 @@ export type {
   ModelInfo,
   ParsedToolCall,
   ToolCallDelta,
+  ToolContentBlock,
+  ToolContentResult,
   ToolDefinition,
   ToolInputSchema,
   WireToolCall,

@@ -1,4 +1,8 @@
-import {TOOL_DEFINITIONS, toChatTools} from '../../../../../src/lib/ai/scratch-tools/definitions';
+import {
+    TOOL_DEFINITIONS,
+    selectToolDefinitions,
+    toChatTools
+} from '../../../../../src/lib/ai/scratch-tools/definitions';
 
 describe('toChatTools', () => {
     /*
@@ -31,5 +35,30 @@ describe('toChatTools', () => {
                 parameters: source.inputSchema
             }
         });
+    });
+});
+
+describe('selectToolDefinitions', () => {
+    const names = tools => tools.map(tool => tool.name);
+
+    /*
+     * The editor's chat hands tool results to the model as JSON text, so a
+     * picture would arrive as tens of thousands of characters of base64.
+     */
+    test('keeps the picture tools out of the editor\'s own chat', () => {
+        const chat = names(selectToolDefinitions({desktop: true, editorChat: true}));
+
+        expect(chat).not.toContain('capture_stage');
+        expect(chat).not.toContain('capture_editor');
+        expect(chat).toContain('get_runtime_state');
+    });
+
+    test('offers the desktop-only tools only in the desktop app', () => {
+        expect(names(selectToolDefinitions({desktop: false, editorChat: false}))).not.toContain('capture_editor');
+        expect(names(selectToolDefinitions({desktop: true, editorChat: false}))).toContain('capture_editor');
+    });
+
+    test('offers an MCP client in the desktop app the whole catalogue', () => {
+        expect(selectToolDefinitions({desktop: true, editorChat: false})).toEqual(TOOL_DEFINITIONS);
     });
 });
