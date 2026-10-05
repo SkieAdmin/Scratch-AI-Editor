@@ -4,7 +4,9 @@ import soundLibraryContent from '../../libraries/sounds.json';
 import spriteLibraryContent from '../../libraries/sprites.json';
 import makeToolboxXML from '../../make-toolbox-xml';
 import randomizeSpritePosition from '../../randomize-sprite-position';
+import {createAssetHandlers} from './asset-tools';
 import {isScratchBlocksType} from './block-definitions';
+import {createEditingHandlers} from './editing-tools';
 import {findAssetIndex} from './find-asset';
 import {menuFieldFor, menuInputFor} from './menus';
 import {createProjectHandlers} from './project-tools';
@@ -790,7 +792,9 @@ const createToolRunner = (vm, options = {}) => {
         },
 
         ...createTestingHandlers({vm, resolveTarget, stageTarget, observer, desktop}),
-        ...createProjectHandlers({vm, project, desktop})
+        ...createProjectHandlers({vm, project, desktop}),
+        ...createAssetHandlers({vm, resolveTarget, stageTarget}),
+        ...createEditingHandlers({vm, resolveTarget, publishBlockChange, buildField, buildShadow})
     };
 
     /**

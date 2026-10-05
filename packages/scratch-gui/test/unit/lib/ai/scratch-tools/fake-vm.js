@@ -15,6 +15,7 @@ const HAT_OPCODES = [
 ];
 const PRIMITIVE_OPCODES = [
     'motion_movesteps', 'motion_turnright', 'looks_say', 'data_setvariableto', 'event_broadcast',
+    'control_if', 'control_if_else',
     ...Object.keys(MENU_INPUTS)
 ];
 
@@ -37,12 +38,28 @@ const makeBlocks = (records = {}) => {
             if (index > -1) scripts.splice(index, 1);
             delete blocks[id];
         }),
+        changeBlock: jest.fn(({id, name, value}) => {
+            blocks[id].fields[name].value = value;
+        }),
+        moveBlock: jest.fn(({id, newCoordinate}) => {
+            blocks[id].x = newCoordinate.x;
+            blocks[id].y = newCoordinate.y;
+        }),
+        resetCache: jest.fn(),
         all: blocks
     };
 };
 
 const makeTarget = config => {
     const costumes = config.costumes || [];
+    const sounds = config.sounds || [];
+    // Scratch numbers a name that is already taken, as `StringUtil.unusedName` does.
+    const unusedName = (items, index, name) => {
+        const taken = items.filter((item, i) => i !== index).map(item => item.name);
+        let candidate = name;
+        for (let n = 2; taken.includes(candidate); n++) candidate = `${name}${n}`;
+        return candidate;
+    };
     const target = {
         id: config.id,
         isStage: Boolean(config.isStage),
@@ -59,7 +76,7 @@ const makeTarget = config => {
         customState: {},
         getName: () => target.name,
         getCostumes: () => costumes,
-        getSounds: () => config.sounds || [],
+        getSounds: () => sounds,
         getLayerOrder: () => config.layer || 0,
         getCustomState: key => target.customState[key],
         setCostume: jest.fn(index => {
@@ -68,7 +85,15 @@ const makeTarget = config => {
         createVariable: jest.fn((id, name, type) => {
             target.variables[id] = {id, name, type, value: ''};
         }),
-        postSpriteInfo: jest.fn()
+        postSpriteInfo: jest.fn(),
+        deleteCostume: jest.fn(index => (costumes.length === 1 ? null : costumes.splice(index, 1)[0])),
+        renameCostume: jest.fn((index, name) => {
+            costumes[index].name = unusedName(costumes, index, name);
+        }),
+        deleteSound: jest.fn(index => sounds.splice(index, 1)[0]),
+        renameSound: jest.fn((index, name) => {
+            sounds[index].name = unusedName(sounds, index, name);
+        })
     };
     target.name = config.name;
     return target;
@@ -123,7 +148,12 @@ const makeRuntime = (targets, stage) => {
         hatThreads: {},
         startHats: jest.fn(opcode => runtime.hatThreads[opcode] || []),
         // Extension block and menu registrations; none are loaded to begin with.
-        _blockInfo: []
+        _blockInfo: [],
+        storage: {
+            AssetType: {ImageVector: 'ImageVector'},
+            DataFormat: {SVG: 'svg'},
+            createAsset: jest.fn((assetType, dataFormat, data) => ({assetId: 'drawn', assetType, dataFormat, data}))
+        }
     });
     Object.defineProperties(runtime, {
         _primitives: {get: () => Object.fromEntries(PRIMITIVE_OPCODES.map(opcode => [opcode, () => {}]))},
@@ -193,6 +223,43 @@ const makeVm = () => {
         renderer: makeRenderer(),
         extensionManager: extensionManager(),
         emitTargetsUpdate: jest.fn(),
+        addCostume: jest.fn((md5ext, costume, targetId) => {
+            const receiver = targets.find(target => target.id === targetId);
+            receiver.getCostumes().push(costume);
+            return Promise.resolve();
+        }),
+        addBackdrop: jest.fn((md5ext, backdrop) => {
+            stage.getCostumes().push(backdrop);
+            return Promise.resolve();
+        }),
+        reorderCostume: jest.fn((targetId, from, to) => {
+            const costumes = targets.find(target => target.id === targetId).getCostumes();
+            costumes.splice(to, 0, costumes.splice(from, 1)[0]);
+            return from !== to;
+        }),
+        reorderSound: jest.fn((targetId, from, to) => {
+            const sounds = targets.find(target => target.id === targetId).getSounds();
+            sounds.splice(to, 0, sounds.splice(from, 1)[0]);
+            return from !== to;
+        }),
+        // Copies the blocks under new ids, as the VM does when a script is dropped on another sprite.
+        shareBlocksToTarget: jest.fn((blocks, targetId) => {
+            const receiver = targets.find(target => target.id === targetId);
+            const copyId = id => (id ? `${id}-copy` : null);
+            JSON.parse(JSON.stringify(blocks)).forEach(block => {
+                Object.values(block.inputs).forEach(input => {
+                    input.block = copyId(input.block);
+                    input.shadow = copyId(input.shadow);
+                });
+                receiver.blocks.createBlock({
+                    ...block,
+                    id: copyId(block.id),
+                    parent: copyId(block.parent),
+                    next: copyId(block.next)
+                });
+            });
+            return Promise.resolve();
+        }),
         refreshWorkspace: jest.fn(),
         postIOData: jest.fn(),
         postSpriteInfo: jest.fn(info => sprite.postSpriteInfo(info)),

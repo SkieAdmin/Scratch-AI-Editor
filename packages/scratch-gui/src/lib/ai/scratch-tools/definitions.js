@@ -17,14 +17,25 @@ const targetProperty = {
     description: 'Sprite name, target id, or "stage". Defaults to the sprite currently being edited.'
 };
 
-const assetChoiceProperties = kind => ({
+const assetChoiceProperties = (kind, listTool = 'list_costumes') => ({
     name: {type: 'string', description: `The ${kind}'s name.`},
     index: {
         type: 'integer',
         minimum: 0,
-        description: `The ${kind}'s position, counting from 0, as list_costumes reports it. Pass name or index.`
+        description: `The ${kind}'s position, counting from 0, as ${listTool} reports it. Pass name or index.`
     }
 });
+
+const positionProperty = (kind, which) => ({
+    type: 'integer',
+    minimum: 0,
+    description: `The ${kind}'s ${which} position, counting from 0.`
+});
+
+const svgProperty = {
+    type: 'string',
+    description: 'The SVG markup, starting with <svg xmlns="http://www.w3.org/2000/svg" ...>.'
+};
 
 const blockSpecDescription =
     'A block is {"opcode": "motion_movesteps", "inputs": {...}, "fields": {...}}. An input value is ' +
@@ -548,6 +559,190 @@ const TOOL_DEFINITIONS = [
                 }
             },
             required: ['path'],
+            additionalProperties: false
+        }
+    },
+    {
+        name: 'delete_costume',
+        description: 'Delete one of a sprite\'s costumes, by name or position. A sprite must keep at least one ' +
+            'costume. With targetId "stage" this deletes a backdrop.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                targetId: targetProperty,
+                ...assetChoiceProperties('costume')
+            },
+            additionalProperties: false
+        }
+    },
+    {
+        name: 'delete_backdrop',
+        description: 'Delete one of the stage\'s backdrops, by name or position, such as the blank "backdrop1" ' +
+            'a new project starts with. The stage must keep at least one backdrop.',
+        inputSchema: {
+            type: 'object',
+            properties: assetChoiceProperties('backdrop'),
+            additionalProperties: false
+        }
+    },
+    {
+        name: 'reorder_costume',
+        description: 'Move a costume to another position in the list, as dragging it in the Costumes tab does. ' +
+            'With targetId "stage" this reorders backdrops.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                targetId: targetProperty,
+                from: positionProperty('costume', 'current'),
+                to: positionProperty('costume', 'new')
+            },
+            required: ['from', 'to'],
+            additionalProperties: false
+        }
+    },
+    {
+        name: 'rename_costume',
+        description: 'Rename a costume, or with targetId "stage" a backdrop. Blocks that choose it from a menu ' +
+            'are updated too. Scratch adds a number when the name is taken, so check the name in the result.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                targetId: targetProperty,
+                ...assetChoiceProperties('costume'),
+                newName: {type: 'string', description: 'The new name.'}
+            },
+            required: ['newName'],
+            additionalProperties: false
+        }
+    },
+    {
+        name: 'delete_sound',
+        description: 'Delete one of a sprite\'s or the stage\'s sounds, by name or position.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                targetId: targetProperty,
+                ...assetChoiceProperties('sound', 'list_sounds')
+            },
+            additionalProperties: false
+        }
+    },
+    {
+        name: 'reorder_sound',
+        description: 'Move a sound to another position in the list, as dragging it in the Sounds tab does.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                targetId: targetProperty,
+                from: positionProperty('sound', 'current'),
+                to: positionProperty('sound', 'new')
+            },
+            required: ['from', 'to'],
+            additionalProperties: false
+        }
+    },
+    {
+        name: 'rename_sound',
+        description: 'Rename a sound. Blocks that choose it from a menu are updated too. Scratch adds a number ' +
+            'when the name is taken, so check the name in the result.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                targetId: targetProperty,
+                ...assetChoiceProperties('sound', 'list_sounds'),
+                newName: {type: 'string', description: 'The new name.'}
+            },
+            required: ['newName'],
+            additionalProperties: false
+        }
+    },
+    {
+        name: 'add_costume_from_svg',
+        description: 'Draw a costume as SVG and add it to a sprite, for a shape or simple picture the library ' +
+            'does not have. The <svg> needs a viewBox, or a width and height. It must not contain scripts, ' +
+            'event handlers or links to anything outside it. The sprite switches to the new costume.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                targetId: targetProperty,
+                name: {type: 'string', description: 'The costume\'s name.'},
+                svg: svgProperty
+            },
+            required: ['name', 'svg'],
+            additionalProperties: false
+        }
+    },
+    {
+        name: 'add_backdrop_from_svg',
+        description: 'Draw a backdrop as SVG and add it to the stage, such as a solid colour or a simple scene. ' +
+            'Make it 480 by 360, the size of the stage: <svg width="480" height="360" ...>. It must not contain ' +
+            'scripts, event handlers or links to anything outside it. The stage switches to the new backdrop.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                name: {type: 'string', description: 'The backdrop\'s name.'},
+                svg: svgProperty
+            },
+            required: ['name', 'svg'],
+            additionalProperties: false
+        }
+    },
+    {
+        name: 'set_block_input',
+        description: 'Change one value in a script without rebuilding it: a number or text typed into an ' +
+            'input, the item a menu input has chosen, or a dropdown field. Name the input or the field; ' +
+            'get_target reports block ids with their inputs and fields. A reporter block sitting in the ' +
+            'input is replaced by the value.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                targetId: targetProperty,
+                blockId: {type: 'string', description: 'The id of the block to change.'},
+                input: {type: 'string', description: 'The input to set, such as "STEPS" or "BACKDROP".'},
+                field: {type: 'string', description: 'The field to set, such as "KEY_OPTION" or "VARIABLE".'},
+                value: {type: ['string', 'number'], description: 'The new value.'}
+            },
+            required: ['blockId', 'value'],
+            additionalProperties: false
+        }
+    },
+    {
+        name: 'move_script',
+        description: 'Move a whole script to another place in the code area, given the id of its top block.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                targetId: targetProperty,
+                topBlockId: {type: 'string', description: 'The id of the script\'s top block.'},
+                x: {type: 'number', description: 'Where the script\'s top-left corner goes, across.'},
+                y: {type: 'number', description: 'Where the script\'s top-left corner goes, down.'}
+            },
+            required: ['topBlockId', 'x', 'y'],
+            additionalProperties: false
+        }
+    },
+    {
+        name: 'clean_up_scripts',
+        description: 'Line up a target\'s scripts in one column, top to bottom in their current order, so none ' +
+            'overlap, as right-click > Clean up Blocks does.',
+        inputSchema: {
+            type: 'object',
+            properties: {targetId: targetProperty},
+            additionalProperties: false
+        }
+    },
+    {
+        name: 'copy_script_to',
+        description: 'Copy a script to another sprite or to the stage, as dragging it onto that sprite in the ' +
+            'sprite list does. The original stays where it is.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                fromTarget: {type: 'string', description: 'The sprite name, target id or "stage" to copy from.'},
+                topBlockId: {type: 'string', description: 'The id of the script\'s top block.'},
+                toTarget: {type: 'string', description: 'The sprite name, target id or "stage" to copy to.'}
+            },
+            required: ['fromTarget', 'topBlockId', 'toTarget'],
             additionalProperties: false
         }
     }

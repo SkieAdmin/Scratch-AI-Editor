@@ -191,6 +191,35 @@ real _switch backdrop to [Jungle v]_ block. A menu can also be named outright, a
 an extension's menus (`pen_menu_colorParam` and so on) once the extension is loaded, which `create_script` does by
 itself.
 
+### Editing what is there
+
+| Tool                    | What it does                                                                       |
+| ----------------------- | ---------------------------------------------------------------------------------- |
+| `delete_costume`        | Delete a costume by name or index; a target keeps at least one                     |
+| `delete_backdrop`       | Delete a backdrop, such as the blank `backdrop1` a new project starts with         |
+| `reorder_costume`       | Move a costume (or, on the stage, a backdrop) from one position to another         |
+| `rename_costume`        | Rename a costume or backdrop; blocks that choose it are renamed too                |
+| `delete_sound`          | Delete a sound by name or index                                                    |
+| `reorder_sound`         | Move a sound from one position to another                                          |
+| `rename_sound`          | Rename a sound                                                                     |
+| `add_costume_from_svg`  | Draw a costume as SVG                                                              |
+| `add_backdrop_from_svg` | Draw a backdrop as SVG, 480 by 360                                                 |
+| `set_block_input`       | Change one input or field of one block, by block id, without rebuilding the script |
+| `move_script`           | Move a script to an `x`, `y` in the code area                                      |
+| `clean_up_scripts`      | Line a target's scripts up in one column, as right-click > Clean up Blocks does    |
+| `copy_script_to`        | Copy a script to another sprite or the stage, as dragging it onto that sprite does |
+
+Positions count from 0, as `list_costumes` and `list_sounds` report them, and a costume or sound is chosen by `name` or
+`index`, not both. An SVG drawing must parse, have a `viewBox` or a `width` and `height`, and contain nothing that runs
+or loads from outside: `<script>`, `<foreignObject>`, `on...` handlers, and `href` or CSS `url()` links that are not
+`#fragments` or `data:image/` URIs are refused with the reason. What passes is cleaned by the same sanitizer the
+editor runs on an uploaded SVG, and stored as an SVG asset exactly as an upload would be.
+
+`set_block_input` takes an `input` or a `field`. For an input it changes the typed value, or the item a menu input has
+chosen; a reporter sitting in the input is deleted and the slot comes back, and an input the block was built without
+is added. `clean_up_scripts` estimates heights from each script's shape, since the VM does not know how big blocks are
+drawn, and errs towards more space rather than overlap.
+
 ### Running and testing the project
 
 These let a client check what it built by running it, the way a person would: start it, click and type, answer its
