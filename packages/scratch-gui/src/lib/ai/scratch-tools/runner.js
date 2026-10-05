@@ -7,6 +7,7 @@ import randomizeSpritePosition from '../../randomize-sprite-position';
 import {isScratchBlocksType} from './block-definitions';
 import {findAssetIndex} from './find-asset';
 import {menuFieldFor, menuInputFor} from './menus';
+import {createProjectHandlers} from './project-tools';
 import {createRuntimeObserver} from './runtime-observer';
 import {createTestingHandlers} from './testing-tools';
 import {
@@ -110,7 +111,9 @@ const assertNumber = (name, value) => {
  * @param {object} [options] overrides for the tool layer
  * @param {Function} [options.getToolboxXml] returns the toolbox XML for a target; supply this where
  *   scratch-blocks is not loaded, otherwise the editor's own toolbox is used
- * @param {?object} [options.desktop] the desktop shell's window services; absent in a browser
+ * @param {?object} [options.desktop] the desktop shell's window and file services; absent in a browser
+ * @param {?object} [options.project] the editor's project title, unsaved-changes flag and File menu
+ *   actions, from `createProjectAdapter`; the project file tools need it
  * @returns {{runTool: Function, dispose: Function}} the tool runner, and a way to stop it
  *   listening to the VM
  */
@@ -118,6 +121,7 @@ const createToolRunner = (vm, options = {}) => {
     const getToolboxXml = options.getToolboxXml ||
         (target => makeToolboxXML(false, target.isStage, target.id, vm.runtime.getBlocksXML(target)));
     const desktop = options.desktop || null;
+    const project = options.project || null;
 
     // Listening starts now, so a question asked before the first tool call is not missed.
     const observer = createRuntimeObserver(vm.runtime);
@@ -785,7 +789,8 @@ const createToolRunner = (vm, options = {}) => {
             return {editingTargetId: target.id, name: target.getName()};
         },
 
-        ...createTestingHandlers({vm, resolveTarget, stageTarget, observer, desktop})
+        ...createTestingHandlers({vm, resolveTarget, stageTarget, observer, desktop}),
+        ...createProjectHandlers({vm, project, desktop})
     };
 
     /**

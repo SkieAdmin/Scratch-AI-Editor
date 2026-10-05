@@ -479,6 +479,77 @@ const TOOL_DEFINITIONS = [
             },
             additionalProperties: false
         }
+    },
+    {
+        name: 'new_project',
+        mcpOnly: true,
+        description: 'Start a new project, as File > New does: the default project, one sprite on a blank ' +
+            'backdrop, replaces the open one. Fails when the open project has unsaved changes, unless ' +
+            'confirm is true, which throws them away.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                title: {type: 'string', description: 'The new project\'s title. Defaults to the editor\'s own.'},
+                confirm: {
+                    type: 'boolean',
+                    description: 'Set to true to start over even though the open project has unsaved changes.'
+                }
+            },
+            additionalProperties: false
+        }
+    },
+    {
+        name: 'set_project_title',
+        description: 'Set the project\'s title, which the menu bar shows and save_project names the file after.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                title: {type: 'string', description: 'The new title.'}
+            },
+            required: ['title'],
+            additionalProperties: false
+        }
+    },
+    {
+        name: 'save_project',
+        mcpOnly: true,
+        description: 'Save the project as a .sb3 file. In the desktop app it is written to path, or to ' +
+            'Documents/Skie AI Editor/Projects/<title>.sb3 when path is left out, and the result gives the ' +
+            'path. In a browser the file is downloaded instead, and path cannot be used.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                path: {
+                    type: 'string',
+                    description: 'Where to write the file. A relative path is inside Documents/Skie AI ' +
+                        'Editor/Projects, and ".sb3" is added when there is no extension.'
+                }
+            },
+            additionalProperties: false
+        }
+    },
+    {
+        name: 'load_project',
+        mcpOnly: true,
+        desktopOnly: true,
+        description: 'Open a .sb3 file in the editor, replacing the open project, as File > Load from your ' +
+            'computer does. Fails when the open project has unsaved changes, unless confirm is true.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                path: {
+                    type: 'string',
+                    description: 'The file to open; .sb2 and .sb work too. A relative path is looked up in ' +
+                        'Documents/Skie AI Editor/Projects.'
+                },
+                confirm: {
+                    type: 'boolean',
+                    description: 'Set to true to open the file even though the open project has unsaved changes.'
+                }
+            },
+            required: ['path'],
+            additionalProperties: false
+        }
     }
 ];
 

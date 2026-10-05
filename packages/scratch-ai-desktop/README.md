@@ -77,10 +77,15 @@ claude mcp add --transport http scratch http://127.0.0.1:8610/mcp
 **Help > Connect an AI client...** shows the endpoint, with buttons that copy that command or the URL. Any number of
 clients can be connected at the same time, and a client that restarts reconnects on its own.
 
-The desktop app offers one tool the browser editor cannot: `capture_editor`, a picture of the whole window, taken by
-the shell with `webContents.capturePage()`. It is current even while another window covers the editor, where a
-screen grab would show stale pixels. The tools themselves are listed in
-[`@skieadmin/scratch-ai-bridge`](../scratch-ai-bridge/README.md#tools).
+The desktop app offers tools the browser editor cannot, because the shell does the part a web page is not allowed to:
+
+- `capture_editor` pictures the whole window with `webContents.capturePage()`, which is current even while another
+  window covers the editor, where a screen grab would show stale pixels.
+- `save_project` writes the `.sb3` itself, to `Documents/Skie AI Editor/Projects/<title>.sb3` unless the client names
+  a path, and `load_project` reads one back. Relative paths are inside that folder, and only `.sb3` files are written
+  (`.sb2` and `.sb` can also be opened).
+
+The tools themselves are listed in [`@skieadmin/scratch-ai-bridge`](../scratch-ai-bridge/README.md#tools).
 
 If port 8610 is taken when the app starts, by another copy of the app or another program, the endpoint moves to a free
 port for that run and the log says so; the Connect dialog shows the address in use. To use a different port for good,

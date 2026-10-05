@@ -2,7 +2,7 @@ import bindAll from 'lodash.bindall';
 import PropTypes from 'prop-types';
 import React from 'react';
 import {defineMessages, injectIntl} from 'react-intl';
-import {connect} from 'react-redux';
+import {ReactReduxContext, connect} from 'react-redux';
 import VM from '@scratch/scratch-vm';
 
 import AiAssistPanelComponent from '../components/ai-assist-panel/ai-assist-panel.jsx';
@@ -14,6 +14,7 @@ import {BRIDGE_STATUS, DEEPSEEK_MODELS, PROVIDER_IDS} from '../lib/ai/constants'
 import {getDesktopShell, isDesktop} from '../lib/ai/desktop';
 import {logError} from '../lib/ai/log';
 import {providerNeedsApiKey, saveConfig} from '../lib/ai/persistence';
+import {createProjectAdapter} from '../lib/ai/project-adapter';
 import {providerMessages} from '../lib/ai/provider-messages';
 import {getProvider} from '../lib/ai/providers';
 import {createToolRunner, selectToolDefinitions, toChatTools} from '../lib/ai/scratch-tools';
@@ -85,7 +86,12 @@ class AiAssistPanel extends React.Component {
     componentDidMount () {
         // Created on mount rather than in the constructor because it listens to
         // the VM, and only a mounted panel is unmounted, which stops it again.
-        this.toolRunner = createToolRunner(this.props.vm, {desktop: getDesktopShell()});
+        this.toolRunner = createToolRunner(this.props.vm, {
+            desktop: getDesktopShell(),
+            // The project tools wait on the store for File > New to finish,
+            // which props, a render behind, cannot tell them.
+            project: createProjectAdapter(this.context.store, this.props.vm)
+        });
         if (this.props.config.useBridge) this.openBridge();
     }
 
@@ -424,6 +430,8 @@ class AiAssistPanel extends React.Component {
         );
     }
 }
+
+AiAssistPanel.contextType = ReactReduxContext;
 
 AiAssistPanel.propTypes = {
     bridgeStatus: PropTypes.string,

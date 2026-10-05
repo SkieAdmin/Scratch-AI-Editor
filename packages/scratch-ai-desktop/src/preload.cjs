@@ -24,4 +24,9 @@ contextBridge.exposeInMainWorld('scratchAiDesktop', {
   // A page cannot take a picture of its own window; the shell can, even while
   // the window is covered by another one.
   captureWindow: () => ipcRenderer.invoke('scratch-ai:capture-window'),
+
+  // Nor can it write or read files where it chooses, which saving and opening
+  // projects for an AI client needs.
+  saveProject: (bytes, request) => ipcRenderer.invoke('scratch-ai:save-project', bytes, request),
+  loadProject: (path) => ipcRenderer.invoke('scratch-ai:load-project', path),
 })

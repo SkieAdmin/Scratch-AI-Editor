@@ -29,6 +29,7 @@ import {
   startOnPreferredPort,
   writeDiscoveryFile,
 } from './mcp-endpoint.ts'
+import { loadProjectFile, projectsDirectory, saveProjectFile } from './project-files.ts'
 import { startRendererServer, type RendererServer } from './renderer-server.ts'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -86,6 +87,11 @@ async function startServices(): Promise<string> {
     logger?.log(level, message)
   })
   ipcMain.handle('scratch-ai:capture-window', (event) => captureWindow(event.sender))
+  const projectsPath = projectsDirectory(app.getPath('documents'))
+  ipcMain.handle('scratch-ai:save-project', (_event, bytes: unknown, request: unknown) =>
+    saveProjectFile(projectsPath, bytes, request),
+  )
+  ipcMain.handle('scratch-ai:load-project', (_event, path: unknown) => loadProjectFile(projectsPath, path))
 
   renderer = await startRendererServer(RENDERER_ROOT, LOOPBACK)
   const rendererOrigin = renderer.origin

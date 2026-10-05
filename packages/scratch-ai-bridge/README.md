@@ -215,6 +215,22 @@ size; the editor shapes such a result as MCP content and the bridge passes it th
 `text` block of JSON. The editor's own chat panel is not offered the two capture tools, because it gives tool results to
 its model as text.
 
+### Project files
+
+| Tool                | What it does                                                               |
+| ------------------- | -------------------------------------------------------------------------- |
+| `new_project`       | Start the default project, as File > New does, optionally with a `title`   |
+| `set_project_title` | Set the title in the menu bar, which also names the saved file             |
+| `save_project`      | Save a `.sb3`: to a file in the desktop app, as a download in a browser    |
+| `load_project`      | Open a `.sb3`, `.sb2` or `.sb` file, as File > Load does; desktop app only |
+
+`new_project` and `load_project` replace the open project, so they refuse while it has unsaved changes unless the
+call passes `"confirm": true`. In the desktop app `save_project` writes to `path`, or to
+`Documents/Skie AI Editor/Projects/<title>.sb3` without one, returns the path, and marks the project saved; a
+relative `path` is inside that folder, for `load_project` too. A browser can only download the file, so there it takes
+no `path` and the project stays marked unsaved, as it does after the editor's own download. Like the capture tools,
+these three are offered to MCP clients only, not to the editor's chat.
+
 ## Security model
 
 Any page in the user's browser can open a WebSocket to `127.0.0.1`. Without a check, a hostile site could quietly
